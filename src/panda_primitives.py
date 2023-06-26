@@ -1,13 +1,22 @@
 from rne import *
 from min_jerk_v2 import *
+from pybullet_utils import *
+from franka_ik_fast import *
+from rrt_star import *
+
 METHOD = "arne"
+MASS = 5
+def arm_conf(_,__):
+    return [0, -PI/4, 0.0, -6*PI/8, 0, PI/2, PI/4]
+def get_gripper_link(robot, arm):
+    return link_from_name(robot, 'panda_grasptarget')
 
 def get_torque_limits_not_exceded_test_v4(problem, arm, mass=None):
     robot = problem.robot
     max_limits = []
     baseLink = 1
     joints = get_arm_joints(robot, arm)
-    a = arm_from_arm(arm)
+    a = 1
     
     for joint in joints:
             max_limits.append(get_max_force(problem.robot, joint))
@@ -28,7 +37,7 @@ def get_torque_limits_not_exceded_test_v4(problem, arm, mass=None):
         if totalMass > 0.01:
             r = [0,0,0.03]
             add_payload(r, totalMass)
-        torques = RNE(poses, velocities, accelerations)
+        torques = rne(poses, velocities, accelerations)
         for i in range(len(max_limits)-1):
             if (abs(torques[i]) >= max_limits[i]*EPS):
                 print("torque test: FAILED", i, torques[i])
@@ -61,14 +70,12 @@ def get_ik_fn_force_aware(problem, custom_limits={}, collisions=True, teleport=T
     timestamp = str(datetime.datetime.now())
     timestamp = "{}_{}".format(timestamp.split(' ')[0], timestamp.split(' ')[1])
 
-    def fn(arm, obj, pose, grasp, reconfig=None):
+    def fn(arm, start_conf, obj, pose, grasp, reconfig=None):
         torque_test = torque_test_left if arm == 'left' else torque_test_right
-        approach_obstacles = {obst for obst in obstacles if not is_placement(obj, obst)}
 
         gripper_pose = multiply(pose.value, invert(grasp.value)) # w_f_g = w_f_o * (g_f_o)^-1
         approach_pose = multiply(pose.value, invert(grasp.approach))
         arm_link = get_gripper_link(robot, arm)
-        pick_grasp = get_pick_grasp()
         # arm_link = link_from_name(robot, 'r_panda_link8')
         arm_joints = get_arm_joints(robot, arm)
         max_velocities = get_max_velocities(problem.robot, arm_joints)
@@ -78,12 +85,11 @@ def get_ik_fn_force_aware(problem, custom_limits={}, collisions=True, teleport=T
         dynam_fn = get_dynamics_fn_v5(problem, resolutions)
         objMass = get_mass(obj)
         objPose = get_pose(obj)[0]
-        default_conf = arm_conf(arm, grasp.carry)
-        pose.assign()
+        default_conf = start_conf
         open_arm(robot, arm)
         set_joint_positions(robot, arm_joints, default_conf) # default_conf | sample_fn()
-        ikfaskt_info = PANDA_RIGHT_INFO
-        gripper_link = link_from_name(robot, PANDA_GRIPPER_ROOTS[arm])
+        ikfaskt_info = PANDA_INFO
+        gripper_link = link_from_name(robot, PANDA_GRIPPER_ROOT[arm])
         grasp_conf = None
         # custom_limits[-2] = (default_conf[-2]-.1, default_conf[-2]+.1)
         # custom_limits[-1] = (default_conf[-1]-.001, default_conf[-1]+.001)
@@ -125,12 +131,7 @@ def get_ik_fn_force_aware(problem, custom_limits={}, collisions=True, teleport=T
 
             path = approach_path #+ grasp_path
         mt = create_trajectory(robot, arm_joints, path, bodies = problem.movable, velocities=approach_vels, accelerations=approach_accels, dts = approach_dts, ts=timestamp)
-        if reconfig is not None:
-            cmd = Commands(State(attachments=attachments), savers=[BodySaver(robot)], commands=[reconfig, mt])
-        else:
-            cmd = Commands(State(attachments=attachments), savers=[BodySaver(robot)], commands=[mt])
-
-        return (cmd,)
+        return (mt,)
     return fn
 
 def test_path_torque_constraint(robot, arm, joints, path, mass, r, test_fn):
@@ -143,3 +144,56 @@ def test_path_torque_constraint(robot, arm, joints, path, mass, r, test_fn):
             return True
     set_joint_positions(robot, joints, reset)
     return False
+
+def get_dynamics_fn_v5(problem, resolutions):
+    arm_joints = get_arm_joints(problem.robot, '')
+    num_joints = len(arm_joints)
+    max_velocities = get_max_velocities(problem.robot, arm_joints)
+    def dynam_fn(path, dur = None, vel0 = [0.0]*num_joints, acc0=[0.0]*num_joints):
+        print("run min jerk")
+        m_coeff = minjerk_coefficients(np.array(path))
+
+        #### CHANGE THIS ####
+        move_time = 5  # seconds
+        #####################
+
+        panda_command_freq = 1000  # Hz
+        num_intervals = move_time * panda_command_freq / len(path)
+
+        minjerk_traj = minjerk_trajectory(m_coeff, num_intervals=int(num_intervals))
+        # outputs timestamp, q, qd, qdd
+        q = [list(q[0]) for q in minjerk_traj]
+        qd = [list(q[1]) for q in minjerk_traj]
+        qdd  = [list(q[2]) for q in minjerk_traj]
+        psg = [move_time * n/len(minjerk_traj) for n in range(0, len(minjerk_traj))]
+        return q,psg, qd,qdd
+    
+    return dynam_fn
+
+def open_arm(robot, arm): # These are mirrored on the pr2
+    for joint in get_gripper_joints(robot, arm):
+        set_joint_position(robot, joint, get_max_limit(robot, joint))
+
+def get_gripper_joints(robot, arm):
+    return joints_from_names()
+
+def plan_joint_motion_force_aware(body, joints, end_conf, torque_fn, dynam_fn, obstacles=[], attachments=[],
+                      self_collisions=True, disabled_collisions=set(),
+                      weights=None, radius=None, max_distance=MAX_DISTANCE,
+                      use_aabb=False, cache=True, custom_limits={}, **kwargs):
+
+    assert len(joints) == len(end_conf)
+    if (weights is None) and (radius is not None):
+        weights = np.reciprocal(radius)
+    sample_fn = get_sample_fn(body, joints, custom_limits=custom_limits)
+    distance_fn = get_distance_fn(body, joints, weights=weights)
+    extend_fn = get_extend_fn(body, joints, resolutions=radius)
+    collision_fn = get_collision_fn(body, joints, obstacles, attachments, self_collisions, disabled_collisions,
+                                    custom_limits=custom_limits, max_distance=max_distance,
+                                    use_aabb=use_aabb, cache=cache)
+
+    start_conf = get_joint_positions(body, joints)
+
+    if not check_initial_end_force_aware(start_conf, end_conf, collision_fn, torque_fn):
+        return None, None, None
+    return rrt_star_force_aware(start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, torque_fn, dynam_fn, radius=[0.01], **kwargs)
