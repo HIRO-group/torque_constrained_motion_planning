@@ -81,6 +81,15 @@ CHROMATIC_COLORS = {
     'blue': BLUE,
 }
 
+MAX_GRASP_WIDTH = 0.07
+
+class Problem:
+    def __init__(self, robot, movable, fixed, surfaces):
+        self.robot = robot
+        self.movable = movable
+        self.fixed = fixed
+        self.surfaces = surfaces
+
 def Point(x=0., y=0., z=0.):
     return np.array([x, y, z])
 
@@ -320,6 +329,7 @@ def joint_from_name(body, name):
     raise ValueError(body, name)
 
 def get_client(client):
+    global CLIENTS
     return CLIENTS[client]
 
 def set_renderer(enable):
@@ -630,7 +640,8 @@ def connect(use_gui=True, shadows=True, color=None, width=None, height=None):
     assert 0 <= sim_id
     #sim_id2 = p.connect(p.SHARED_MEMORY)
     #print(sim_id, sim_id2)
-    CLIENTS[sim_id] = True if use_gui else None
+    global CLIENTS
+    CLIENTS[sim_id] = sim_id if use_gui else None
     set_client(sim_id)
     if use_gui:
         # p.COV_ENABLE_PLANAR_REFLECTION
@@ -2000,6 +2011,7 @@ def create_shape_array(geoms, poses, colors=None):
 #####################################
 
 def create_body(collision_id=NULL_ID, visual_id=NULL_ID, mass=STATIC_MASS, inertial=NULL_ID):
+    global CLIENT
     return p.createMultiBody(baseMass=mass, baseCollisionShapeIndex=collision_id,
                              baseVisualShapeIndex=visual_id, physicsClientId=CLIENT)
 
@@ -2199,7 +2211,7 @@ def clone_collision_shape(body, link, client=None):
     # TODO: can do CollisionArray
     return collision_shape_from_data(collision_data[0], body, link, client)
 
-def clone_body(body, links=None, collision=True, visual=True, client=None):
+def clone_body(body, links=None, collision=True, visual=True, client=CLIENT):
     # TODO: names are not retained
     # TODO: error with createMultiBody link poses on PR2
     # localVisualFrame_position: position of local visual frame, relative to link/joint frame
@@ -3334,6 +3346,22 @@ def create_trajectory(robot, joints, path, bodies, velocities=None, acceleration
             confs.append(Conf(robot, joints, path[i], velocities=None))
     return Trajectory(confs, bodies=bodies, ts=ts)
 
+class Grasp(object):
+    def __init__(self, grasp_type, body, value, approach, carry):
+        self.grasp_type = grasp_type
+        self.body = body
+        self.value = tuple(value) # gripper_from_object
+        self.approach = tuple(approach)
+        self.carry = tuple(carry)
+    # def get_attachment(self, robot, arm):
+    #     tool_link = link_from_name(robot, PANDA_TOOL_FRAME)
+    #     return Attachment(robot, tool_link, self.value, self.body)
+    def __repr__(self):
+        return 'g{}'.format(id(self) % 1000)
+    def get_attachment(self, robot, arm):
+        tool_link = link_from_name(robot, PANDA_TOOL_FRAME)
+        return Attachment(robot, tool_link, self.value, self.body)
+
 class Conf(object):
     def __init__(self, body, joints, values=None, init=False, velocities=None, accelerations=None, movables=None, dt=None):
         self.body = body
@@ -3739,7 +3767,25 @@ class ConfSaver(Saver):
 
     def __repr__(self):
         return '{}({})'.format(self.__class__.__name__, self.body)
+    
+class PoseSaver(Saver):
+    def __init__(self, body, pose=None):
+        self.body = body
+        if pose is None:
+            pose = get_pose(self.body)
+        self.pose = pose
+        self.velocity = get_velocity(self.body)
 
+    def apply_mapping(self, mapping):
+        self.body = mapping.get(self.body, self.body)
+
+    def restore(self):
+        set_pose(self.body, self.pose)
+        set_velocity(self.body, *self.velocity)
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, self.body)
+    
 class BodySaver(Saver):
     def __init__(self, body, **kwargs): #, pose=None):
         #if pose is None:
@@ -3774,3 +3820,6 @@ class WorldSaver(Saver):
     def restore(self):
         for body_saver in self.body_savers:
             body_saver.restore()
+
+def make_hiro_env(robot):
+    pass

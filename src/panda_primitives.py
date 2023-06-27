@@ -48,7 +48,34 @@ def get_torque_limits_not_exceded_test_v4(problem, arm, mass=None):
         return True
 
     return test
+MAX_GRASP_WIDTH = 0.07
+GRASP_LENGTH = 0.05
 
+def get_top_grasps(body, under=False, tool_pose=TOOL_POSE, body_pose=unit_pose(),
+                   max_width=MAX_GRASP_WIDTH, grasp_length=GRASP_LENGTH):
+    # TODO: rename the box grasps
+    center, (w, l, h) = approximate_as_prism(body, body_pose=body_pose)
+    reflect_z = Pose(euler=[0, math.pi, 0])
+    translate_z = Pose(point=[0, 0, h / 2 - grasp_length])
+    translate_center = Pose(point=point_from_pose(body_pose)-center)
+    grasps = []
+    if w <= max_width:
+        for i in range(1 + under):
+            rotate_z = Pose(euler=[0, 0, math.pi / 2 + i * math.pi])
+            grasps += [multiply(tool_pose, translate_z, rotate_z,
+                                reflect_z, translate_center, body_pose)]
+    if l <= max_width:
+        for i in range(1 + under):
+            rotate_z = Pose(euler=[0, 0, i * math.pi])
+            grasps += [multiply(tool_pose, translate_z, rotate_z,
+                                reflect_z, translate_center, body_pose)]
+    return grasps
+
+def get_top_grasp(body):
+    approach_vector = get_unit_vector([1, 0, 0])
+    grasps = get_top_grasps(body)
+    grasp = grasps[np.random.choice(len(grasps))]
+    return Grasp('top', body, grasp, multiply((approach_vector, unit_quat()), grasp), TOP_HOLDING_LEFT_ARM)
 
 def get_planner_fn_force_aware(problem, custom_limits={}, collisions=True, teleport=True, max_attempts = 100):
     robot = problem.robot
@@ -68,11 +95,11 @@ def get_planner_fn_force_aware(problem, custom_limits={}, collisions=True, telep
     timestamp = str(datetime.datetime.now())
     timestamp = "{}_{}".format(timestamp.split(' ')[0], timestamp.split(' ')[1])
 
-    def fn(arm, start_conf, obj, pose, grasp, reconfig=None):
+    def fn(arm, start_conf, obj, pose, reconfig=None):
+        grasp = get_top_grasp(obj)
         torque_test = torque_test_left if arm == 'left' else torque_test_right
-
-        gripper_pose = multiply(pose.value, invert(grasp.value)) # w_f_g = w_f_o * (g_f_o)^-1
-        approach_pose = multiply(pose.value, invert(grasp.approach))
+        print(pose)
+        gripper_pose = multiply(list(pose), invert(grasp.value)) # w_f_g = w_f_o * (g_f_o)^-1
         arm_link = get_gripper_link(robot, arm)
         # arm_link = link_from_name(robot, 'r_panda_link8')
         arm_joints = get_arm_joints(robot)
@@ -87,7 +114,7 @@ def get_planner_fn_force_aware(problem, custom_limits={}, collisions=True, telep
         open_arm(robot, arm)
         set_joint_positions(robot, arm_joints, default_conf) # default_conf | sample_fn()
         ikfaskt_info = PANDA_INFO
-        gripper_link = link_from_name(robot, PANDA_GRIPPER_ROOT[arm])
+        gripper_link = link_from_name(robot, PANDA_GRIPPER_ROOT)
         grasp_conf = None
         # custom_limits[-2] = (default_conf[-2]-.1, default_conf[-2]+.1)
         # custom_limits[-1] = (default_conf[-1]-.001, default_conf[-1]+.001)
@@ -102,34 +129,32 @@ def get_planner_fn_force_aware(problem, custom_limits={}, collisions=True, telep
         print("found grasp")
         set_joint_positions(robot, arm_joints, default_conf)
 
-        attachment = grasp.get_attachment(problem.robot, arm)
-        attachments = {attachment.child: attachment}
-        if teleport:
-            path = [default_conf, approach_conf, grasp_conf]
-        else:
-            # grasp_path = plan_direct_joint_motion_force_aware(robot, arm_joints, grasp_conf, torque_test, dynam_fn, attachments=attachments.values(),
-            #                                       obstacles=approach_obstacles, self_collisions=SELF_COLLISIONS,
-            #                                       custom_limits={}, resolutions=resolutions/2.)
-            # if grasp_path is None:
-            #     print('Grasp path failure')
-            #     return None
-            set_joint_positions(robot, arm_joints, default_conf)
-            # approach_path, approach_vels, _ = plan_joint_motion_force_aware(robot, arm_joints, approach_conf, torque_test, dynam_fn, attachments=attachments.values(),
-            #                                   obstacles=obstacles, self_collisions=SELF_COLLISIONS,
-            #                                   custom_limits=custom_limits, resolutions=resolutions,
-            #                                   restarts=4, iterations=25, smooth=25)
-            approach_path, approach_vels, approach_accels, approach_dts = plan_joint_motion_force_aware(robot, arm_joints, grasp_conf, torque_test, dynam_fn, attachments=attachments.values(),
-                                              obstacles=obstacles, self_collisions=SELF_COLLISIONS, max_time=50,
-                                              custom_limits=custom_limits, radius=resolutions/2,
-                                              max_iterations=50)
-            # approach_path, approach_vels, approach_accels = ruckig_path_planner(default_conf, grasp_conf, torque_test, arm_joints, max_velocities)
-            if approach_path is None:
-                print('Approach path failure')
-                return None
+        # attachment = grasp.get_attachment(problem.robot, arm)
+        attachments = {}
 
-            path = approach_path #+ grasp_path
+        # grasp_path = plan_direct_joint_motion_force_aware(robot, arm_joints, grasp_conf, torque_test, dynam_fn, attachments=attachments.values(),
+        #                                       obstacles=approach_obstacles, self_collisions=SELF_COLLISIONS,
+        #                                       custom_limits={}, resolutions=resolutions/2.)
+        # if grasp_path is None:
+        #     print('Grasp path failure')
+        #     return None
+        set_joint_positions(robot, arm_joints, default_conf)
+        # approach_path, approach_vels, _ = plan_joint_motion_force_aware(robot, arm_joints, approach_conf, torque_test, dynam_fn, attachments=attachments.values(),
+        #                                   obstacles=obstacles, self_collisions=SELF_COLLISIONS,
+        #                                   custom_limits=custom_limits, resolutions=resolutions,
+        #                                   restarts=4, iterations=25, smooth=25)
+        approach_path, approach_vels, approach_accels, approach_dts = plan_joint_motion_force_aware(robot, arm_joints, grasp_conf, torque_test, dynam_fn, attachments=attachments.values(),
+                                            obstacles=obstacles, self_collisions=SELF_COLLISIONS, max_time=50,
+                                            custom_limits=custom_limits, radius=resolutions/2,
+                                            max_iterations=50)
+        # approach_path, approach_vels, approach_accels = ruckig_path_planner(default_conf, grasp_conf, torque_test, arm_joints, max_velocities)
+        if approach_path is None:
+            print('Approach path failure')
+            return None
+
+        path = approach_path #+ grasp_path
         mt = create_trajectory(robot, arm_joints, path, bodies = problem.movable, velocities=approach_vels, accelerations=approach_accels, dts = approach_dts, ts=timestamp)
-        return (mt,)
+        return mt
     return fn
 
 def test_path_torque_constraint(robot, arm, joints, path, mass, r, test_fn):
@@ -144,7 +169,7 @@ def test_path_torque_constraint(robot, arm, joints, path, mass, r, test_fn):
     return False
 
 def get_dynamics_fn_v5(problem, resolutions):
-    arm_joints = get_arm_joints(problem.robot, '')
+    arm_joints = get_arm_joints(problem.robot)
     num_joints = len(arm_joints)
     max_velocities = get_max_velocities(problem.robot, arm_joints)
     def dynam_fn(path, dur = None, vel0 = [0.0]*num_joints, acc0=[0.0]*num_joints):

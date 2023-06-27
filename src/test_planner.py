@@ -36,7 +36,7 @@ def packed_force_aware_transfer_HIRO(arm='right', grasp_type='top', num=1, dist=
     # set_point(panda, (0,0,0.4))
     table = load_pybullet(HIRO_TABLE_1, rel_path=True)
     set_point(table, (-0.2994,0,-0.5131))
-    table2 = load_pybullet(HIRO_TABLE_2, rel_path=True)
+    table2 = load_pybullet(HIRO_TABLE_1, rel_path=True)
     set_point(table2, (0.6218, 0,-0.5131))
     wall = load_pybullet(WALL_URDF, rel_path=True)
     set_pose(wall, ((-0.7366, 0,0),quat_from_euler((0,0,0))))
@@ -67,6 +67,18 @@ def packed_force_aware_transfer_HIRO(arm='right', grasp_type='top', num=1, dist=
     obj_z = stable_z(blocks[0], start_plate)
     set_point(blocks[0], (new_x, new_y, obj_z))
     enable_gravity()
+    problem = Problem(panda, blocks, [table, table2, wall, plate], surfaces)
+    planner = get_planner_fn_force_aware(problem)
+    saver = WorldSaver()
+    traj = planner("right", initial_conf, blocks[-1], get_pose(blocks[-1]))
+    saver.restore()
+    set_real_time(True)
+    input("Hit enter to execute plan")
+
+    for conf in traj.path:
+        set_joint_positions_torque(panda, get_arm_joints(panda), conf.values, conf.velocities)
+        print(conf.dt)
+        wait_for_duration(.01)
     input("Press enter to quit.")
     disconnect()
 
