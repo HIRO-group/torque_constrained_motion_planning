@@ -74,11 +74,12 @@ def packed_force_aware_transfer_HIRO(arm='right', grasp_type='top', num=1, dist=
     saver.restore()
     set_real_time(True)
     input("Hit enter to execute plan")
-
+    prevT = 0
     for conf in traj.path:
         set_joint_positions_torque(panda, get_arm_joints(panda), conf.values, conf.velocities)
         print(conf.dt)
-        wait_for_duration(.01)
+        wait_for_duration(conf.dt - prevT)
+        prevT = conf.dt
     input("Press enter to quit.")
     disconnect()
 
