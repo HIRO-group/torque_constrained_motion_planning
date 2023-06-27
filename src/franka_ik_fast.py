@@ -1,8 +1,8 @@
 from ik_utils import IKFastInfo
 from ik_utils import get_ik_limits, compute_forward_kinematics, compute_inverse_kinematics, select_solution, \
     USE_ALL, USE_CURRENT
-from pybullet_utils import PANDA_TOOL_FRAMES, get_gripper_link, get_arm_joints, side_from_arm
-from .ik_utils import multiply, get_link_pose, link_from_name, get_joint_positions, \
+from utils import PANDA_TOOL_FRAMES, get_gripper_link, get_arm_joints, side_from_arm
+from ik_utils import multiply, get_link_pose, link_from_name, get_joint_positions, \
     joint_from_name, invert, get_custom_limits, all_between, sub_inverse_kinematics, set_joint_positions, \
     get_joint_positions, pairwise_collision
 from ikfast import * # For legacy purposes

@@ -1,6 +1,6 @@
 from rne import *
 from min_jerk_v2 import *
-from pybullet_utils import *
+from utils import *
 from franka_ik_fast import *
 from rrt_star import *
 
@@ -52,7 +52,7 @@ def get_torque_limits_not_exceded_test_v4(problem, arm, mass=None):
     return test
 
 
-def get_ik_fn_force_aware(problem, custom_limits={}, collisions=True, teleport=True, max_attempts = 100):
+def get_planner_fn_force_aware(problem, custom_limits={}, collisions=True, teleport=True, max_attempts = 100):
     robot = problem.robot
     obstacles = problem.fixed + problem.surfaces if collisions else []
     # torque_test_left = get_torque_limits_not_exceded_test_v2(problem, 'left')

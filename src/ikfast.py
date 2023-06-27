@@ -12,7 +12,7 @@ sys.path.append(PARENT_DIR)
 from itertools import islice, chain
 
 from ik_utils import compute_inverse_kinematics, compute_forward_kinematics
-from pybullet_utils import get_link_pose, link_from_name, multiply, invert, parent_joint_from_link, parent_link_from_joint, \
+from utils import get_link_pose, link_from_name, multiply, invert, parent_joint_from_link, parent_link_from_joint, \
     prune_fixed_joints, joints_from_names, INF, get_difference_fn, \
     get_joint_positions, get_min_limits, get_max_limits, interval_generator, elapsed_time, randomize, violates_limits, \
     get_length, get_relative_pose, set_joint_positions, get_pose_distance, ConfSaver, \

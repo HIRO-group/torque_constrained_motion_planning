@@ -2,7 +2,7 @@ import random
 from collections import namedtuple
 import numpy as np
 
-from pybullet_utils import matrix_from_quat, point_from_pose, quat_from_pose, quat_from_matrix, \
+from utils import matrix_from_quat, point_from_pose, quat_from_pose, quat_from_matrix, \
     get_joint_limits, get_joint_position, get_joint_positions, get_distance
 
 # TODO: lookup robot & tool in dictionary and use if exists
