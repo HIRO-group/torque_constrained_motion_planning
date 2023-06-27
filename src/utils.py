@@ -26,27 +26,23 @@ from itertools import product, combinations, count, cycle, islice
 from multiprocessing import TimeoutError
 from contextlib import contextmanager
 from tf import *
-ARM_NAMES = ['panda_joint1', 'panda_joint2', 'panda_joint3','panda_joint4',
+ARM_JOINT_NAMES = ['panda_joint1', 'panda_joint2', 'panda_joint3','panda_joint4',
                             'panda_joint5', 'panda_joint6', 'panda_joint7']
 
-GRIPPER_NAMES = ['panda_hand_joint', 'panda_finger_joint1',
+GRIPPER_JOINT_NAMES = ['panda_hand_joint', 'panda_finger_joint1',
                                  'panda_finger_joint2', 'panda_grasptarget_hand']
 
+ARM_LINK_NAMES = ['panda_link1', 'panda_link2', 'panda_link3','panda_link4',
+                            'panda_link5', 'panda_link6', 'panda_link7']
+PI = np.pi
 PANDA_GRIPPER_ROOT = 'panda_hand'
-
-
-def Point(x=0., y=0., z=0.):
-    return np.array([x, y, z])
-
-def Euler(roll=0., pitch=0., yaw=0.):
-    return np.array([roll, pitch, yaw])
-
-def Pose(point=None, euler=None):
-    point = Point() if point is None else point
-    euler = Euler() if euler is None else euler
-    return point, quat_from_euler(euler)
-
-TOOL_POSE = Pose(point=Point(0, 0.0, 0.1),euler=Euler(roll= 0,pitch=0, yaw=0))
+PANDA_TOOL_FRAME = 'panda_grasptarget'
+HIRO_TABLE_1 = "src/models/table_panda_HIRO_1.urdf"
+HIRO_TABLE_2 = "src/models/table_panda_HIRO_2.urdf"
+COKE_URDF = "src/models/coke.urdf"
+WALL_URDF = "src/models/wall.urdf"
+PANDA_MOD_URDF = "src/models/panda_mod.urdf"
+TOP_HOLDING_LEFT_ARM = [0, -PI/4, 0.0, -6*PI/8, 0, PI/2, PI/4]
 
 BASE_LINK = -1
 CLIENT = 0
@@ -84,6 +80,163 @@ CHROMATIC_COLORS = {
     'green': GREEN,
     'blue': BLUE,
 }
+
+def Point(x=0., y=0., z=0.):
+    return np.array([x, y, z])
+
+def Euler(roll=0., pitch=0., yaw=0.):
+    return np.array([roll, pitch, yaw])
+
+def Pose(point=None, euler=None):
+    point = Point() if point is None else point
+    euler = Euler() if euler is None else euler
+    return point, quat_from_euler(euler)
+
+def Pose2d(x=0., y=0., yaw=0.):
+    return np.array([x, y, yaw])
+
+def invert(pose):
+    point, quat = pose
+    return p.invertTransform(point, quat)
+
+def multiply(*poses):
+    pose = poses[0]
+    for next_pose in poses[1:]:
+        pose = p.multiplyTransforms(pose[0], pose[1], *next_pose)
+    return pose
+
+def invert_quat(quat):
+    pose = (unit_point(), quat)
+    return quat_from_pose(invert(pose))
+
+def multiply_quats(*quats):
+    return quat_from_pose(multiply(*[(unit_point(), quat) for quat in quats]))
+
+def unit_from_theta(theta):
+    return np.array([np.cos(theta), np.sin(theta)])
+
+def quat_from_euler(euler):
+    return p.getQuaternionFromEuler(euler) # TODO: extrinsic (static) vs intrinsic (rotating)
+
+def euler_from_quat(quat):
+    return p.getEulerFromQuaternion(quat) # rotation around fixed axis
+
+def intrinsic_euler_from_quat(quat):
+    #axes = 'sxyz' if static else 'rxyz'
+    return euler_from_quaternion(quat, axes='rxyz')
+
+def unit_point():
+    return (0., 0., 0.)
+
+def unit_quat():
+    return quat_from_euler([0, 0, 0]) # [X,Y,Z,W]
+
+def quat_from_axis_angle(axis, angle): # axis-angle
+    #return get_unit_vector(np.append(vec, [angle]))
+    return np.append(math.sin(angle/2) * get_unit_vector(axis), [math.cos(angle / 2)])
+
+def unit_pose():
+    return (unit_point(), unit_quat())
+
+def get_length(vec, norm=2):
+    return np.linalg.norm(vec, ord=norm)
+
+def get_difference(p1, p2):
+    assert len(p1) == len(p2)
+    return np.array(p2) - np.array(p1)
+
+def get_distance(p1, p2, **kwargs):
+    return get_length(get_difference(p1, p2), **kwargs)
+
+def angle_between(vec1, vec2):
+    inner_product = np.dot(vec1, vec2) / (get_length(vec1) * get_length(vec2))
+    return math.acos(clip(inner_product, min_value=-1., max_value=+1.))
+
+def get_angle(q1, q2):
+    return get_yaw(np.array(q2) - np.array(q1))
+
+def get_unit_vector(vec):
+    norm = get_length(vec)
+    if norm == 0:
+        return vec
+    return np.array(vec) / norm
+
+def z_rotation(theta):
+    return quat_from_euler([0, 0, theta])
+
+def matrix_from_quat(quat):
+    return np.array(p.getMatrixFromQuaternion(quat, physicsClientId=CLIENT)).reshape(3, 3)
+
+def quat_from_matrix(rot):
+    matrix = np.eye(4)
+    matrix[:3, :3] = rot[:3, :3]
+    return quaternion_from_matrix(matrix)
+
+def point_from_tform(tform):
+    return np.array(tform)[:3,3]
+
+def matrix_from_tform(tform):
+    return np.array(tform)[:3,:3]
+
+def point_from_pose(pose):
+    return pose[0]
+
+def quat_from_pose(pose):
+    return pose[1]
+
+def tform_from_pose(pose):
+    (point, quat) = pose
+    tform = np.eye(4)
+    tform[:3,3] = point
+    tform[:3,:3] = matrix_from_quat(quat)
+    return tform
+
+def pose_from_tform(tform):
+    return point_from_tform(tform), quat_from_matrix(matrix_from_tform(tform))
+
+def normalize_interval(value, interval=UNIT_LIMITS):
+    lower, upper = interval
+    assert lower <= upper
+    return (value - lower) / (upper - lower)
+
+def rescale_interval(value, old_interval=UNIT_LIMITS, new_interval=UNIT_LIMITS):
+    lower, upper = new_interval
+    return convex_combination(lower, upper, w=normalize_interval(value, old_interval))
+
+def wrap_interval(value, interval=UNIT_LIMITS):
+    lower, upper = interval
+    assert lower <= upper
+    return (value - lower) % (upper - lower) + lower
+
+def interval_distance(value1, value2, interval=UNIT_LIMITS):
+    value1 = wrap_interval(value1, interval)
+    value2 = wrap_interval(value2, interval)
+    if value1 > value2:
+        value1, value2 = value2, value1
+    lower, upper = interval
+    return min(value2 - value1, (value1 - lower) + (upper - value2))
+
+def circular_interval(lower=-PI): # [-np.pi, np.pi)
+    return Interval(lower, lower + 2*PI)
+
+def wrap_angle(theta, **kwargs):
+    return wrap_interval(theta, interval=circular_interval(**kwargs))
+
+def circular_difference(theta2, theta1, **kwargs):
+    return wrap_angle(theta2 - theta1, **kwargs)
+
+def Point(x=0., y=0., z=0.):
+    return np.array([x, y, z])
+
+def Euler(roll=0., pitch=0., yaw=0.):
+    return np.array([roll, pitch, yaw])
+
+def Pose(point=None, euler=None):
+    point = Point() if point is None else point
+    euler = Euler() if euler is None else euler
+    return point, quat_from_euler(euler)
+
+TOOL_POSE = Pose(point=Point(0, 0.0, 0.1),euler=Euler(roll= 0,pitch=0, yaw=0))
 
 
 def merge_dicts(*args):
@@ -197,8 +350,8 @@ def tform_point(affine, point):
 PANDA_ARM = ['panda_joint1', 'panda_joint2', 'panda_joint3','panda_joint4',
                             'panda_joint5', 'panda_joint6', 'panda_joint7']
 
-def get_arm_joints(arm):
-    return joints_from_names(PANDA_ARM)
+def get_arm_joints(robot):
+    return joints_from_names(robot, PANDA_ARM)
 
 PANDA_GROUPS = {
     "base": ["panda_joint1"],
@@ -237,24 +390,26 @@ def get_urdf_flags(cache=False, cylinder=False):
         flags |= p.URDF_USE_IMPLICIT_CYLINDER
     return flags | p.URDF_USE_INERTIA_FROM_FILE
 
-def load_pybullet(filename, fixed_base=False, scale=1., **kwargs):
+def load_pybullet(filename, fixed_base=False, scale=1., rel_path=False, **kwargs):
     # fixed_base=False implies infinite base mass
-    with LockRenderer():
-        if filename.endswith('.urdf'):
-            flags = get_urdf_flags(**kwargs)
-            body = p.loadURDF(filename, useFixedBase=fixed_base, flags=flags,
-                              globalScaling=scale, physicsClientId=CLIENT)
-        elif filename.endswith('.sdf'):
-            body = p.loadSDF(filename, physicsClientId=CLIENT)
-        elif filename.endswith('.xml'):
-            body = p.loadMJCF(filename, physicsClientId=CLIENT)
-        elif filename.endswith('.bullet'):
-            body = p.loadBullet(filename, physicsClientId=CLIENT)
-        elif filename.endswith('.obj'):
-            # TODO: fixed_base => mass = 0?
-            body = create_obj(filename, scale=scale, **kwargs)
-        else:
-            raise ValueError(filename)
+    # with LockRenderer():
+    if rel_path:
+        filename = get_model_path(filename)
+    if filename.endswith('.urdf'):
+        flags = get_urdf_flags(**kwargs)
+        body = p.loadURDF(filename, useFixedBase=fixed_base, flags=flags,
+                            globalScaling=scale, physicsClientId=CLIENT)
+    elif filename.endswith('.sdf'):
+        body = p.loadSDF(filename, physicsClientId=CLIENT)
+    elif filename.endswith('.xml'):
+        body = p.loadMJCF(filename, physicsClientId=CLIENT)
+    elif filename.endswith('.bullet'):
+        body = p.loadBullet(filename, physicsClientId=CLIENT)
+    elif filename.endswith('.obj'):
+        # TODO: fixed_base => mass = 0?
+        body = create_obj(filename, scale=scale, **kwargs)
+    else:
+        raise ValueError(filename)
     INFO_FROM_BODY[CLIENT, body] = ModelInfo(None, filename, fixed_base, scale)
     return body
 
@@ -447,6 +602,10 @@ class LockRenderer():
         if self.state != CLIENTS[self.client]:
            set_renderer(enable=self.state)
 
+def set_client(ID):
+    global CLIENT
+    CLIENT =  ID
+
 def connect(use_gui=True, shadows=True, color=None, width=None, height=None):
     # Shared Memory: execute the physics simulation and rendering in a separate process
     # https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/vrminitaur.py#L7
@@ -472,6 +631,7 @@ def connect(use_gui=True, shadows=True, color=None, width=None, height=None):
     #sim_id2 = p.connect(p.SHARED_MEMORY)
     #print(sim_id, sim_id2)
     CLIENTS[sim_id] = True if use_gui else None
+    set_client(sim_id)
     if use_gui:
         # p.COV_ENABLE_PLANAR_REFLECTION
         # p.COV_ENABLE_SINGLE_STEP_RENDERING
@@ -871,149 +1031,7 @@ def restore_bullet(filename):
 
 #Pose = namedtuple('Pose', ['position', 'orientation'])
 
-def Point(x=0., y=0., z=0.):
-    return np.array([x, y, z])
 
-def Euler(roll=0., pitch=0., yaw=0.):
-    return np.array([roll, pitch, yaw])
-
-def Pose(point=None, euler=None):
-    point = Point() if point is None else point
-    euler = Euler() if euler is None else euler
-    return point, quat_from_euler(euler)
-
-def Pose2d(x=0., y=0., yaw=0.):
-    return np.array([x, y, yaw])
-
-def invert(pose):
-    point, quat = pose
-    return p.invertTransform(point, quat)
-
-def multiply(*poses):
-    pose = poses[0]
-    for next_pose in poses[1:]:
-        pose = p.multiplyTransforms(pose[0], pose[1], *next_pose)
-    return pose
-
-def invert_quat(quat):
-    pose = (unit_point(), quat)
-    return quat_from_pose(invert(pose))
-
-def multiply_quats(*quats):
-    return quat_from_pose(multiply(*[(unit_point(), quat) for quat in quats]))
-
-def unit_from_theta(theta):
-    return np.array([np.cos(theta), np.sin(theta)])
-
-def quat_from_euler(euler):
-    return p.getQuaternionFromEuler(euler) # TODO: extrinsic (static) vs intrinsic (rotating)
-
-def euler_from_quat(quat):
-    return p.getEulerFromQuaternion(quat) # rotation around fixed axis
-
-def intrinsic_euler_from_quat(quat):
-    #axes = 'sxyz' if static else 'rxyz'
-    return euler_from_quaternion(quat, axes='rxyz')
-
-def unit_point():
-    return (0., 0., 0.)
-
-def unit_quat():
-    return quat_from_euler([0, 0, 0]) # [X,Y,Z,W]
-
-def quat_from_axis_angle(axis, angle): # axis-angle
-    #return get_unit_vector(np.append(vec, [angle]))
-    return np.append(math.sin(angle/2) * get_unit_vector(axis), [math.cos(angle / 2)])
-
-def unit_pose():
-    return (unit_point(), unit_quat())
-
-def get_length(vec, norm=2):
-    return np.linalg.norm(vec, ord=norm)
-
-def get_difference(p1, p2):
-    assert len(p1) == len(p2)
-    return np.array(p2) - np.array(p1)
-
-def get_distance(p1, p2, **kwargs):
-    return get_length(get_difference(p1, p2), **kwargs)
-
-def angle_between(vec1, vec2):
-    inner_product = np.dot(vec1, vec2) / (get_length(vec1) * get_length(vec2))
-    return math.acos(clip(inner_product, min_value=-1., max_value=+1.))
-
-def get_angle(q1, q2):
-    return get_yaw(np.array(q2) - np.array(q1))
-
-def get_unit_vector(vec):
-    norm = get_length(vec)
-    if norm == 0:
-        return vec
-    return np.array(vec) / norm
-
-def z_rotation(theta):
-    return quat_from_euler([0, 0, theta])
-
-def matrix_from_quat(quat):
-    return np.array(p.getMatrixFromQuaternion(quat, physicsClientId=CLIENT)).reshape(3, 3)
-
-def quat_from_matrix(rot):
-    matrix = np.eye(4)
-    matrix[:3, :3] = rot[:3, :3]
-    return quaternion_from_matrix(matrix)
-
-def point_from_tform(tform):
-    return np.array(tform)[:3,3]
-
-def matrix_from_tform(tform):
-    return np.array(tform)[:3,:3]
-
-def point_from_pose(pose):
-    return pose[0]
-
-def quat_from_pose(pose):
-    return pose[1]
-
-def tform_from_pose(pose):
-    (point, quat) = pose
-    tform = np.eye(4)
-    tform[:3,3] = point
-    tform[:3,:3] = matrix_from_quat(quat)
-    return tform
-
-def pose_from_tform(tform):
-    return point_from_tform(tform), quat_from_matrix(matrix_from_tform(tform))
-
-def normalize_interval(value, interval=UNIT_LIMITS):
-    lower, upper = interval
-    assert lower <= upper
-    return (value - lower) / (upper - lower)
-
-def rescale_interval(value, old_interval=UNIT_LIMITS, new_interval=UNIT_LIMITS):
-    lower, upper = new_interval
-    return convex_combination(lower, upper, w=normalize_interval(value, old_interval))
-
-def wrap_interval(value, interval=UNIT_LIMITS):
-    lower, upper = interval
-    assert lower <= upper
-    return (value - lower) % (upper - lower) + lower
-
-def interval_distance(value1, value2, interval=UNIT_LIMITS):
-    value1 = wrap_interval(value1, interval)
-    value2 = wrap_interval(value2, interval)
-    if value1 > value2:
-        value1, value2 = value2, value1
-    lower, upper = interval
-    return min(value2 - value1, (value1 - lower) + (upper - value2))
-
-def circular_interval(lower=-PI): # [-np.pi, np.pi)
-    return Interval(lower, lower + 2*PI)
-
-def wrap_angle(theta, **kwargs):
-    return wrap_interval(theta, interval=circular_interval(**kwargs))
-
-def circular_difference(theta2, theta1, **kwargs):
-    return wrap_angle(theta2 - theta1, **kwargs)
 
 def cache_decorator(function):
     """
@@ -3362,3 +3380,397 @@ class Trajectory():
         #     self.file = f'/home/liam/exp_data/{ts}_torque_data_{METHOD}_{MASS}kg.csv'
         #     self.file2 = f'/home/liam/exp_data/{ts}_velocity_data_{METHOD}_{MASS}kg.csv'
         #     self.file3 = f'/home/liam/exp_data/{ts}_eoat_velocity_data_{METHOD}_{MASS}kg.csv'
+
+def create_panda():
+    # with LockRenderer():
+    with HideOutput():
+        panda = load_model(rel_path = PANDA_MOD_URDF, fixed_base=True)
+        # bi_panda = load_model(BI_PANDA_PLATE_URDF, fixed_base=True)
+    return panda
+
+def set_joint_force_limits(robot):
+    links = get_arm_links(robot)
+    joints = get_group_joints(robot)
+    for i in range(len(joints)):
+        joint = joints[i]
+        limits = get_joint_info(robot, joint)
+        p.changeDynamics(robot, links[i], jointLimitForce=limits.jointMaxForce)
+
+def get_arm_links(robot):
+    return [link_from_name(robot, name) for name in ARM_LINK_NAMES]
+
+def get_group_joints(robot, group = "arm"):
+    joints = ARM_JOINT_NAMES
+    if group == "hand":
+        joints = GRIPPER_JOINT_NAMES
+    return joints_from_names(robot, joints)
+
+def set_arm_conf(robot, arm, conf):
+    set_joint_positions(robot, get_arm_joints(robot), conf)
+
+def add_fixed_constraint(body, robot, robot_link=BASE_LINK, max_force=None):
+    body_link = BASE_LINK
+    body_pose = get_pose(body)
+    #body_pose = get_com_pose(body, link=body_link)
+    #end_effector_pose = get_link_pose(robot, robot_link)
+    end_effector_pose = get_com_pose(robot, robot_link)
+    grasp_pose = multiply(invert(end_effector_pose), body_pose)
+    point, quat = grasp_pose
+    # TODO: can I do this when I'm not adjacent?
+    # joint axis in local frame (ignored for JOINT_FIXED)
+    #return p.createConstraint(robot, robot_link, body, body_link,
+    #                          p.JOINT_FIXED, jointAxis=unit_point(),
+    #                          parentFramePosition=unit_point(),
+    #                          childFramePosition=point,
+    #                          parentFrameOrientation=unit_quat(),
+    #                          childFrameOrientation=quat)
+    constraint = p.createConstraint(robot, robot_link, body, body_link,  # Both seem to work
+                                    p.JOINT_FIXED, jointAxis=unit_point(),
+                                    parentFramePosition=point,
+                                    childFramePosition=unit_point(),
+                                    parentFrameOrientation=quat,
+                                    childFrameOrientation=unit_quat(),
+                                    physicsClientId=CLIENT)
+    if max_force is not None:
+        p.changeConstraint(constraint, maxForce=max_force, physicsClientId=CLIENT)
+    return constraint
+
+def stable_z_on_aabb(body, aabb):
+    center, extent = get_center_extent(body)
+    _, upper = aabb
+    return (upper + extent/2 + (get_point(body) - center))[2]
+
+def stable_z(body, surface, surface_link=None):
+    return stable_z_on_aabb(body, get_aabb(surface, link=surface_link))
+
+def sample_placements(body_surfaces, obstacles=None, min_distances={}):
+    if obstacles is None:
+        obstacles = [body for body in get_bodies() if body not in body_surfaces]
+    obstacles = list(obstacles)
+    # TODO: max attempts here
+    for body, surface in body_surfaces.items():
+        min_distance = min_distances.get(body, 0.01)
+        while True:
+            pose = sample_placement(body, surface)
+            if pose is None:
+                return False
+            if not any(pairwise_collision(body, obst, max_distance=min_distance)
+                       for obst in obstacles if obst not in [body, surface]):
+                obstacles.append(body)
+                break
+    return True
+
+def sample_placement(top_body, bottom_body, bottom_link=None, **kwargs):
+    bottom_aabb = get_aabb(bottom_body, link=bottom_link)
+    return sample_placement_on_aabb(top_body, bottom_aabb, **kwargs)
+
+def sample_placement_on_aabb(top_body, bottom_aabb, top_pose=unit_pose(),
+                             percent=1.0, max_attempts=50, epsilon=1e-3):
+    # TODO: transform into the coordinate system of the bottom
+    # TODO: maybe I should instead just require that already in correct frame
+    for _ in range(max_attempts):
+        theta = np.random.uniform(*CIRCULAR_LIMITS)
+        rotation = Euler(yaw=theta)
+        set_pose(top_body, multiply(Pose(euler=rotation), top_pose))
+        center, extent = get_center_extent(top_body)
+        lower = (np.array(bottom_aabb[0]) + percent*extent/2)[:2] # TODO: scale_aabb
+        upper = (np.array(bottom_aabb[1]) - percent*extent/2)[:2]
+        aabb = AABB(lower, upper)
+        if aabb_empty(aabb):
+            continue
+        x, y = sample_aabb(aabb)
+        z = (bottom_aabb[1] + extent/2.)[2] + epsilon
+        point = np.array([x, y, z]) + (get_point(top_body) - center)
+        pose = multiply(Pose(point, rotation), top_pose)
+        set_pose(top_body, pose)
+        return pose
+    return None
+
+def get_gripper_link(robot, arm):
+    return link_from_name(robot, 'panda_grasptarget')
+
+def is_pose_close(pose, target_pose, pos_tolerance=1e-3, ori_tolerance=1e-3*np.pi):
+    (point, quat) = pose
+    (target_point, target_quat) = target_pose
+    if (target_point is not None) and not np.allclose(point, target_point, atol=pos_tolerance, rtol=0):
+        return False
+    if (target_quat is not None) and not np.allclose(quat, target_quat, atol=ori_tolerance, rtol=0):
+        # TODO: account for quaternion redundancy
+        return False
+    return True
+
+def are_joints_close(joints, target_joints, tolerance=1e-3):
+    return np.allclose(joints, target_joints, atol=tolerance, rtol=0)
+
+def irange(start, end=None, step=1):
+    if end is None:
+        end = start
+        start = 0
+    n = start
+    while n < end:
+        yield n
+        n += step
+
+
+def inverse_kinematics_helper(robot, link, target_pose, null_space=None):
+    (target_point, target_quat) = target_pose
+    assert target_point is not None
+    if null_space is not None:
+        assert target_quat is not None
+        lower, upper, ranges, rest = null_space
+        kinematic_conf = p.calculateInverseKinematics(robot, link, target_point, lowerLimits=lower, upperLimits=upper,
+                                                      jointRanges=ranges, restPoses=rest, physicsClientId=CLIENT)
+    elif target_quat is None:
+        #ikSolver = p.IK_DLS or p.IK_SDLS
+        kinematic_conf = p.calculateInverseKinematics(robot, link, target_point,
+                                                      #lowerLimits=ll, upperLimits=ul, jointRanges=jr, restPoses=rp, jointDamping=jd,
+                                                      # solver=ikSolver, currentPosition=None, maxNumIterations=20, residualThreshold=-1,
+                                                      physicsClientId=CLIENT)
+    else:
+        # TODO: calculateInverseKinematics2
+        kinematic_conf = p.calculateInverseKinematics(robot, link, target_point, target_quat, physicsClientId=CLIENT)
+    if (kinematic_conf is None) or any(map(math.isnan, kinematic_conf)):
+        return None
+    return kinematic_conf
+
+def create_sub_robot(robot, first_joint, target_link):
+    # TODO: create a class or generator for repeated use
+    selected_links = get_link_subtree(robot, first_joint) # TODO: child_link_from_joint?
+    selected_joints = prune_fixed_joints(robot, selected_links)
+    assert(target_link in selected_links)
+    sub_target_link = selected_links.index(target_link)
+    sub_robot = clone_body(robot, links=selected_links, visual=False, collision=False) # TODO: joint limits
+    assert len(selected_joints) == len(get_movable_joints(sub_robot))
+    return sub_robot, selected_joints, sub_target_link
+
+def multiple_sub_inverse_kinematics(robot, first_joint, target_link, target_pose, max_attempts=1, max_solutions=INF,
+                                    max_time=INF, custom_limits={}, first_close=True, **kwargs):
+    # TODO: gradient descent using collision_info
+    start_time = time.time()
+    ancestor_joints = prune_fixed_joints(robot, get_ordered_ancestors(robot, target_link))
+    affected_joints = ancestor_joints[ancestor_joints.index(first_joint):]
+    sub_robot, selected_joints, sub_target_link = create_sub_robot(robot, first_joint, target_link)
+    #sub_joints = get_movable_joints(sub_robot)
+    #sub_from_real = dict(safe_zip(sub_joints, selected_joints))
+    sub_joints = prune_fixed_joints(sub_robot, get_ordered_ancestors(sub_robot, sub_target_link))
+    selected_joints = affected_joints
+    #sub_from_real = dict(safe_zip(sub_joints, selected_joints))
+
+    #sample_fn = get_sample_fn(sub_robot, sub_joints, custom_limits=custom_limits) # [-PI, PI]
+    sample_fn = get_sample_fn(robot, selected_joints, custom_limits=custom_limits)
+    # lower_limits, upper_limits = get_custom_limits(robot, get_movable_joints(robot), custom_limits)
+    solutions = []
+    for attempt in irange(max_attempts):
+        if (len(solutions) >= max_solutions) or (elapsed_time(start_time) >= max_time):
+            break
+        if not first_close or (attempt >= 1): # TODO: multiple seed confs
+            sub_conf = sample_fn()
+            set_joint_positions(sub_robot, sub_joints, sub_conf)
+        sub_kinematic_conf = inverse_kinematics(sub_robot, sub_target_link, target_pose,
+                                                max_time=max_time-elapsed_time(start_time), **kwargs)
+        if sub_kinematic_conf is not None:
+            #set_configuration(sub_robot, sub_kinematic_conf)
+            sub_kinematic_conf = get_joint_positions(sub_robot, sub_joints)
+            set_joint_positions(robot, selected_joints, sub_kinematic_conf)
+            kinematic_conf = get_configuration(robot) # TODO: test on the resulting robot state (e.g. collisions)
+            #if not all_between(lower_limits, kinematic_conf, upper_limits):
+            solutions.append(kinematic_conf) # kinematic_conf | sub_kinematic_conf
+    if solutions:
+        set_configuration(robot, solutions[-1])
+    # TODO: test for redundant configurations
+    remove_body(sub_robot)
+    return solutions
+
+def plan_cartesian_motion(robot, first_joint, target_link, waypoint_poses,
+                          max_iterations=25, max_time=INF, custom_limits={}, ik_fn = None, arm = None, joints = None, **kwargs):
+    # TODO: fix stationary joints
+    # TODO: pass in set of movable joints and take least common ancestor
+    # TODO: update with most recent bullet updates
+    # https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/inverse_kinematics.py
+    # https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/inverse_kinematics_husky_kuka.py
+    # TODO: plan a path without needing to following intermediate waypoints
+
+    lower_limits, upper_limits = get_custom_limits(robot, get_movable_joints(robot), custom_limits)
+    sub_robot, selected_joints, sub_target_link = create_sub_robot(robot, first_joint, target_link)
+    sub_joints = get_movable_joints(sub_robot)
+
+    #null_space = get_null_space(robot, selected_joints, custom_limits=custom_limits)
+    null_space = None
+
+    solutions = []
+    for target_pose in waypoint_poses:
+        start_time = time.time()
+        for iteration in irange(max_iterations):
+            if elapsed_time(start_time) >= max_time:
+                print("times up")
+                remove_body(sub_robot)
+                return None
+            sub_kinematic_conf = inverse_kinematics_helper(sub_robot, sub_target_link, target_pose, null_space=null_space)
+            set_joint_positions(sub_robot, sub_joints, sub_kinematic_conf)
+            if is_pose_close(get_link_pose(sub_robot, sub_target_link), target_pose, **kwargs):
+                print("###################")
+                set_joint_positions(robot, selected_joints, sub_kinematic_conf)
+                kinematic_conf = get_configuration(robot)
+                if not all_between(lower_limits, kinematic_conf, upper_limits):
+                    print("limits violated")
+                #     movable_joints = get_movable_joints(robot)
+                #     print([(get_joint_name(robot, j), l, v, u) for j, l, v, u in
+                #           zip(movable_joints, lower_limits, kinematic_conf, upper_limits) if not (l <= v <= u)])
+                #     print("Limits violated")
+                #     # wait_if_gui()
+                    remove_body(sub_robot)
+                    return None
+                print("IK iterations:", iteration)
+                solutions.append(kinematic_conf)
+                break
+        else:
+            print("else area")
+            remove_body(sub_robot)
+            return None
+    # TODO: finally:
+    remove_body(sub_robot)
+    return solutions
+
+def sub_inverse_kinematics(robot, first_joint, target_link, target_pose, **kwargs):
+    solutions = plan_cartesian_motion(robot, first_joint, target_link, [target_pose], **kwargs)
+    if solutions:
+        return solutions[0]
+    return None
+
+def randomize(iterable): # TODO: bisect
+    sequence = list(iterable)
+    random.shuffle(sequence)
+    return sequence
+
+def get_random_seed():
+    return random.getstate()[1][1]
+
+def get_numpy_seed():
+    return np.random.get_state()[1][0]
+
+def set_random_seed(seed=None):
+    if seed is not None:
+        random.seed(seed)
+
+def wrap_numpy_seed(seed):
+    return seed % (2**32) # int | hash
+
+def set_numpy_seed(seed=None):
+    # These generators are different and independent
+    if seed is not None:
+        np.random.seed(wrap_numpy_seed(seed))
+        #print('Seed:', seed)
+
+def get_pose_distance(pose1, pose2):
+    pos1, quat1 = pose1
+    pos2, quat2 = pose2
+    pos_distance = get_distance(pos1, pos2)
+    ori_distance = quat_angle_between(quat1, quat2)
+    return pos_distance, ori_distance
+
+def interpolate_poses(pose1, pose2, pos_step_size=0.01, ori_step_size=np.pi/16):
+    pos1, quat1 = pose1
+    pos2, quat2 = pose2
+    num_steps = max(2, int(math.ceil(max(
+        np.divide(get_pose_distance(pose1, pose2), [pos_step_size, ori_step_size])))))
+    yield pose1
+    for w in np.linspace(0, 1, num=num_steps, endpoint=True)[1:-1]:
+        pos = convex_combination(pos1, pos2, w=w)
+        quat = quat_combination(quat1, quat2, fraction=w)
+        yield (pos, quat)
+    yield pose2
+
+def interpolate(value1, value2, num_steps=2):
+    num_steps = max(num_steps, 2)
+    yield value1
+    for w in np.linspace(0, 1, num=num_steps, endpoint=True)[1:-1]:
+        yield convex_combination(value1, value2, w=w)
+    yield value2
+
+def interpolate_waypoints(interpolate_fn, waypoints, returns_first=True):
+    if len(waypoints) <= 1:
+        for waypoint in waypoints:
+            yield waypoint
+        return
+    yield waypoints[0]
+    for waypoint1, waypoint2 in get_pairs(waypoints):
+        for i, value in enumerate(interpolate_fn(waypoint1, waypoint2)):
+            if returns_first and (i == 0):
+                continue
+            yield value
+
+class Saver(object):
+    # TODO: contextlib
+    def save(self):
+        pass
+    def restore(self):
+        raise NotImplementedError()
+    def __enter__(self):
+        # TODO: move the saving to enter?
+        self.save()
+        #return self
+    def __exit__(self, type, value, traceback):
+        self.restore()
+
+class ConfSaver(Saver):
+    def __init__(self, body, joints=None, positions=None):
+        self.body = body
+        if joints is None:
+            joints = get_movable_joints(self.body)
+        self.joints = joints
+        if positions is None:
+            positions = get_joint_positions(self.body, self.joints)
+        self.positions = positions
+        self.velocities = get_joint_velocities(self.body, self.joints)
+
+    @property
+    def conf(self):
+        return self.positions
+
+    def apply_mapping(self, mapping):
+        self.body = mapping.get(self.body, self.body)
+
+    def restore(self):
+        # set_configuration(self.body, self.conf)
+        set_joint_positions(self.body, self.joints, self.positions)
+        # set_joint_states(self.body, self.joints, self.positions, self.velocities)
+        #set_joint_velocities(self.body, self.joints, self.velocities)
+        pass
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, self.body)
+
+class BodySaver(Saver):
+    def __init__(self, body, **kwargs): #, pose=None):
+        #if pose is None:
+        #    pose = get_pose(body)
+        self.body = body
+        self.pose_saver = PoseSaver(body)
+        self.conf_saver = ConfSaver(body, **kwargs)
+        self.savers = [self.pose_saver, self.conf_saver]
+
+    def apply_mapping(self, mapping):
+        for saver in self.savers:
+            saver.apply_mapping(mapping)
+
+    def restore(self):
+        # if self.body == body_from_name(TARGET):
+        #     return
+        for saver in self.savers:
+            saver.restore()
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, self.body)
+
+class WorldSaver(Saver):
+    def __init__(self, bodies=None):
+        if bodies is None:
+            bodies = get_bodies()
+        self.bodies = bodies
+        self.body_savers = [BodySaver(body) for body in self.bodies]
+        # TODO: add/remove new bodies
+        # TODO: save the camera pose
+
+    def restore(self):
+        for body_saver in self.body_savers:
+            body_saver.restore()

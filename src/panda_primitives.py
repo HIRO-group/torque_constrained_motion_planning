@@ -8,14 +8,12 @@ METHOD = "arne"
 MASS = 5
 def arm_conf(_,__):
     return [0, -PI/4, 0.0, -6*PI/8, 0, PI/2, PI/4]
-def get_gripper_link(robot, arm):
-    return link_from_name(robot, 'panda_grasptarget')
 
 def get_torque_limits_not_exceded_test_v4(problem, arm, mass=None):
     robot = problem.robot
     max_limits = []
     baseLink = 1
-    joints = get_arm_joints(robot, arm)
+    joints = get_arm_joints(robot)
     a = 1
     
     for joint in joints:
@@ -77,7 +75,7 @@ def get_planner_fn_force_aware(problem, custom_limits={}, collisions=True, telep
         approach_pose = multiply(pose.value, invert(grasp.approach))
         arm_link = get_gripper_link(robot, arm)
         # arm_link = link_from_name(robot, 'r_panda_link8')
-        arm_joints = get_arm_joints(robot, arm)
+        arm_joints = get_arm_joints(robot)
         max_velocities = get_max_velocities(problem.robot, arm_joints)
         resolutions = 0.2**np.ones(len(arm_joints))
         print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
@@ -175,7 +173,7 @@ def open_arm(robot, arm): # These are mirrored on the pr2
         set_joint_position(robot, joint, get_max_limit(robot, joint))
 
 def get_gripper_joints(robot, arm):
-    return joints_from_names()
+    return joints_from_names(robot, GRIPPER_JOINT_NAMES)
 
 def plan_joint_motion_force_aware(body, joints, end_conf, torque_fn, dynam_fn, obstacles=[], attachments=[],
                       self_collisions=True, disabled_collisions=set(),
