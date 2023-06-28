@@ -14,15 +14,15 @@ IK_FRAME = {
     'left': 'l_panda_grasptarget',
     'right': 'panda_grasptarget',
 }
-FRANKA_URDF = "models/franka_description/robots/panda_arm_hand.urdf"
+FRANKA_URDF = "models/panda_mod.urdf"
 
-PANDA_INFO = IKFastInfo(module_name='franka_panda.ikfast_panda_arm', base_link='panda_link0',
+PANDA_INFO = IKFastInfo(module_name='ikfast_panda_arm', base_link='panda_link0',
                         ee_link='panda_link8', free_joints=['panda_joint7'])
 
-PANDA_LEFT_INFO = IKFastInfo(module_name='franka_panda.ikfast_panda_arm', base_link='l_panda_link0',
+PANDA_LEFT_INFO = IKFastInfo(module_name='ikfast_panda_arm', base_link='l_panda_link0',
                         ee_link='l_panda_link8', free_joints=['l_panda_joint7'])
 
-PANDA_RIGHT_INFO = IKFastInfo(module_name='franka_panda.ikfast_panda_arm', base_link='panda_link0',
+PANDA_RIGHT_INFO = IKFastInfo(module_name='ikfast_panda_arm', base_link='panda_link0',
                         ee_link='panda_link8', free_joints=['panda_joint7'])
 
 info = {'left': PANDA_LEFT_INFO, 'right': PANDA_RIGHT_INFO}
@@ -69,7 +69,8 @@ def sample_tool_ik(robot, arm, tool_pose, nearby_conf=USE_CURRENT, max_attempts=
 def bi_panda_inverse_kinematics(robot, arm, gripper_link, gripper_pose, max_attempts=25, max_time=1.3, custom_limits={}, obstacles=[]):
     arm_link = get_gripper_link(robot, arm)
     arm_joints = get_arm_joints(robot)
-    if is_ik_compiled(info[arm]):
+    if is_ik_compiled(PANDA_INFO):
+        print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ IK IS COMPILED")
         ik_joints = get_arm_joints(robot)
         arm_conf = sample_tool_ik(robot, arm, gripper_pose, custom_limits=custom_limits)
         if arm_conf is None:
@@ -77,6 +78,7 @@ def bi_panda_inverse_kinematics(robot, arm, gripper_link, gripper_pose, max_atte
             return None
         set_joint_positions(robot, ik_joints, arm_conf)
     else:
+        print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ IK IS NOT COMPILED")
         arm_conf = sub_inverse_kinematics(robot, arm_joints[0], arm_link, gripper_pose, custom_limits=custom_limits)
         if arm_conf is None:
             return None

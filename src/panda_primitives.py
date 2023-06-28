@@ -49,7 +49,7 @@ def get_torque_limits_not_exceded_test_v4(problem, arm, mass=None):
 
     return test
 MAX_GRASP_WIDTH = 0.07
-GRASP_LENGTH = 0.05
+GRASP_LENGTH = 0.02
 
 def get_top_grasps(body, under=False, tool_pose=TOOL_POSE, body_pose=unit_pose(),
                    max_width=MAX_GRASP_WIDTH, grasp_length=GRASP_LENGTH):
@@ -74,10 +74,10 @@ def get_top_grasps(body, under=False, tool_pose=TOOL_POSE, body_pose=unit_pose()
 def get_top_grasp(body):
     approach_vector = get_unit_vector([1, 0, 0])
     grasps = get_top_grasps(body)
-    grasp = grasps[np.random.choice(len(grasps))]
+    grasp = grasps[0]
     return Grasp('top', body, grasp, multiply((approach_vector, unit_quat()), grasp), TOP_HOLDING_LEFT_ARM)
 
-def get_planner_fn_force_aware(problem, custom_limits={}, collisions=True, teleport=True, max_attempts = 100):
+def get_planner_fn_force_aware(problem, custom_limits={}, collisions=False, teleport=True, max_attempts = 100):
     robot = problem.robot
     obstacles = problem.fixed + problem.surfaces if collisions else []
     # torque_test_left = get_torque_limits_not_exceded_test_v2(problem, 'left')
@@ -97,9 +97,12 @@ def get_planner_fn_force_aware(problem, custom_limits={}, collisions=True, telep
 
     def fn(arm, start_conf, obj, pose, reconfig=None):
         grasp = get_top_grasp(obj)
+        # pose = world_pose_to_robot_frame(robot, pose)
         torque_test = torque_test_left if arm == 'left' else torque_test_right
         print(pose)
         gripper_pose = multiply(list(pose), invert(grasp.value)) # w_f_g = w_f_o * (g_f_o)^-1
+        print(f"Gripper pose &&&&&&&&&& {gripper_pose}")
+        print(f"Object pose &&&&&&&&&&& {pose}")
         arm_link = get_gripper_link(robot, arm)
         # arm_link = link_from_name(robot, 'r_panda_link8')
         arm_joints = get_arm_joints(robot)

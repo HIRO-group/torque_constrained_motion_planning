@@ -22,7 +22,7 @@ SETUP_FILENAME = 'setup.py'
 
 
 def get_module_name(ikfast_info):
-    return 'ikfast.{}'.format(ikfast_info.module_name)
+    return '{}'.format(ikfast_info.module_name)
 
 
 def import_ikfast(ikfast_info):
@@ -37,7 +37,8 @@ def is_ik_compiled(ikfast_info):
     try:
         import_ikfast(ikfast_info)
         return True
-    except ImportError:
+    except ImportError as e:
+        print(e)
         return False
 
 
