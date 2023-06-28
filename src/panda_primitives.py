@@ -22,13 +22,13 @@ def get_torque_limits_not_exceded_test_v4(problem, arm, mass=None):
     EPS =  1
     totalMass = mass
     if totalMass is None:
-        totalMass = get_mass(problem.movable[-1])
+        totalMass = get_mass(problem.payload)
     comR = []
     totalMass = 0
     def test(poses = None, ptotalMass = None, velocities=None, accelerations=None):
         totalMass = ptotalMass
-        if totalMass is None:
-            totalMass = get_mass(problem.movable[-1])
+        if totalMass is None and problem.payload is not None:
+            totalMass = get_mass(problem.payload)
         if velocities is None or accelerations is None:
             velocities = [0]*len(poses)
             accelerations = [0]*len(poses)
@@ -49,14 +49,14 @@ def get_torque_limits_not_exceded_test_v4(problem, arm, mass=None):
 
     return test
 MAX_GRASP_WIDTH = 0.07
-GRASP_LENGTH = 0.02
+GRASP_LENGTH = 0.15
 
 def get_top_grasps(body, under=False, tool_pose=TOOL_POSE, body_pose=unit_pose(),
                    max_width=MAX_GRASP_WIDTH, grasp_length=GRASP_LENGTH):
     # TODO: rename the box grasps
     center, (w, l, h) = approximate_as_prism(body, body_pose=body_pose)
     reflect_z = Pose(euler=[0, math.pi, 0])
-    translate_z = Pose(point=[0, 0, h / 2 - grasp_length])
+    translate_z = Pose(point=[0, 0, h  - grasp_length])
     translate_center = Pose(point=point_from_pose(body_pose)-center)
     grasps = []
     if w <= max_width:
@@ -79,7 +79,7 @@ def get_top_grasp(body):
 
 def get_planner_fn_force_aware(problem, custom_limits={}, collisions=False, teleport=True, max_attempts = 100):
     robot = problem.robot
-    obstacles = problem.fixed + problem.surfaces if collisions else []
+    obstacles = problem.fixed
     # torque_test_left = get_torque_limits_not_exceded_test_v2(problem, 'left')
     torque_test_right = None
     if METHOD == "rne":
@@ -156,7 +156,7 @@ def get_planner_fn_force_aware(problem, custom_limits={}, collisions=False, tele
             return None
 
         path = approach_path #+ grasp_path
-        mt = create_trajectory(robot, arm_joints, path, bodies = problem.movable, velocities=approach_vels, accelerations=approach_accels, dts = approach_dts, ts=timestamp)
+        mt = create_trajectory(robot, arm_joints, path, bodies = [problem.payload], velocities=approach_vels, accelerations=approach_accels, dts = approach_dts, ts=timestamp)
         return mt
     return fn
 
