@@ -74,7 +74,7 @@ def packed_force_aware_transfer_HIRO(arm='right', grasp_type='top', num=1, dist=
     problem = Problem(panda, [table, table2, wall, plate], blocks[-1])
     planner = get_planner_fn_force_aware(problem)
     saver = WorldSaver()
-    traj = planner("right", initial_conf, blocks[-1], get_pose(blocks[-1]))
+    traj = planner(initial_conf, get_pose(blocks[-1]))
     saver.restore()
     set_real_time(True)
     input("Hit enter to execute plan")

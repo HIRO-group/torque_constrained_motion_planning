@@ -55,12 +55,7 @@ def sample_tool_ik(robot, arm, tool_pose, nearby_conf=USE_CURRENT, max_attempts=
             # TODO: sort by distance from the current solution when attempting?
             if solutions:
                 if not all_between(lower_limits, solutions, upper_limits):
-                    # print("joint limits exceeded")
-                    # print(solutions)
-                    # print("upper", upper_limits)
-                    # print("lower", lower_limits)
                     continue
-                # distances = [get_joint_distances(current_conf, new_config) for new_config in solutions]
                 return solutions
         except StopIteration:
             break
@@ -70,7 +65,6 @@ def bi_panda_inverse_kinematics(robot, arm, gripper_link, gripper_pose, max_atte
     arm_link = get_gripper_link(robot, arm)
     arm_joints = get_arm_joints(robot)
     if is_ik_compiled(PANDA_INFO):
-        print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ IK IS COMPILED")
         ik_joints = get_arm_joints(robot)
         arm_conf = sample_tool_ik(robot, arm, gripper_pose, custom_limits=custom_limits)
         if arm_conf is None:
@@ -78,7 +72,6 @@ def bi_panda_inverse_kinematics(robot, arm, gripper_link, gripper_pose, max_atte
             return None
         set_joint_positions(robot, ik_joints, arm_conf)
     else:
-        print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ IK IS NOT COMPILED")
         arm_conf = sub_inverse_kinematics(robot, arm_joints[0], arm_link, gripper_pose, custom_limits=custom_limits)
         if arm_conf is None:
             return None

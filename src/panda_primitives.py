@@ -77,7 +77,7 @@ def get_top_grasp(body):
     grasp = grasps[0]
     return Grasp('top', body, grasp, multiply((approach_vector, unit_quat()), grasp), TOP_HOLDING_LEFT_ARM)
 
-def get_planner_fn_force_aware(problem, custom_limits={}, collisions=False, teleport=True, max_attempts = 100):
+def get_planner_fn_force_aware(problem):
     robot = problem.robot
     obstacles = problem.fixed
     # torque_test_left = get_torque_limits_not_exceded_test_v2(problem, 'left')
@@ -95,11 +95,14 @@ def get_planner_fn_force_aware(problem, custom_limits={}, collisions=False, tele
     timestamp = str(datetime.datetime.now())
     timestamp = "{}_{}".format(timestamp.split(' ')[0], timestamp.split(' ')[1])
 
-    def fn(arm, start_conf, obj, pose, reconfig=None):
+    def fn(start_conf, pose, reconfig=None):
+        arm = "right"
+        obj = problem.payload
+        custom_limits = {}
         grasp = get_top_grasp(obj)
         # pose = world_pose_to_robot_frame(robot, pose)
-        torque_test = torque_test_left if arm == 'left' else torque_test_right
-        print(pose)
+        torque_test = torque_test_right
+        print(f"POSE: {pose}")
         gripper_pose = multiply(list(pose), invert(grasp.value)) # w_f_g = w_f_o * (g_f_o)^-1
         print(f"Gripper pose &&&&&&&&&& {gripper_pose}")
         print(f"Object pose &&&&&&&&&&& {pose}")
