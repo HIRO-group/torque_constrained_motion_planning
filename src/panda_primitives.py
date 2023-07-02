@@ -9,6 +9,88 @@ MASS = 5
 def arm_conf(_,__):
     return [0, -PI/4, 0.0, -6*PI/8, 0, PI/2, PI/4]
 
+def get_torque_limits_not_exceded_test_base(problem, arm, mass=None):
+    def test(poses = None, ptotalMass = None, velocities=None, accelerations=None):
+        return True
+    return test
+
+def get_torque_limits_not_exceded_test_v3_nov(problem, arm, mass=None):
+    robot = problem.robot
+    max_limits = []
+    baseLink = 1
+    joints = get_arm_joints(robot, arm)
+    for joint in joints:
+            max_limits.append(get_max_force(problem.robot, joint))
+
+    EPS =  1
+    totalMass = mass
+    if totalMass is None:
+        totalMass = get_mass(problem.payload)
+    comR = []
+    totalMass = 0
+    def test(poses = None, ptotalMass = None, velocities=None, accelerations=None):
+        totalMass = ptotalMass
+        if totalMass is None:
+            totalMass = get_mass(problem.payload)
+        velocities = [0]*len(poses)
+        accelerations = [0]*len(poses)
+        hold = get_joint_positions(robot, joints)
+        set_joint_positions(robot, joints, poses)
+
+        set_joint_positions(robot, joints, hold)
+        if totalMass > 0.01:
+            r = [0,0,0.05]
+            add_payload(r, totalMass)
+        torques = rne(poses, velocities, accelerations)
+        for i in range(len(max_limits)-1):
+            if (abs(torques[i]) >= max_limits[i]*EPS):
+                print("torque test: FAILED", i, torques[i])
+                # print("Velocities: ", velocities)
+                # print("Accelerations: ", accelerations)
+                remove_payload()
+                return False
+        # print("torque test: PASSED")
+        remove_payload()
+        return True
+
+    return test
+
+
+def get_torque_limits_not_exceded_test_v3_nov(problem, mass=None):
+    robot = problem.robot
+    max_limits = []
+    joints = get_arm_joints(robot)
+    for joint in joints:
+            max_limits.append(get_max_force(problem.robot, joint))
+
+    EPS =  1
+    totalMass = mass
+    if totalMass is None:
+        totalMass = get_mass(problem.payload)
+    totalMass = 0
+    def test(poses = None, ptotalMass = None, velocities=None, accelerations=None):
+        totalMass = ptotalMass
+        if totalMass is None:
+            totalMass = get_mass(problem.payload)
+        velocities = [0]*len(poses)
+        accelerations = [0]*len(poses)
+        hold = get_joint_positions(robot, joints)
+        set_joint_positions(robot, joints, poses)
+
+        set_joint_positions(robot, joints, hold)
+        if totalMass > 0.01:
+            r = [0,0,0.05]
+            add_payload(r, totalMass)
+        torques = rne(poses, velocities, accelerations)
+        for i in range(len(max_limits)-1):
+            if (abs(torques[i]) >= max_limits[i]*EPS):
+                remove_payload()
+                return False
+        remove_payload()
+        return True
+
+    return test
+
 def get_torque_limits_not_exceded_test_v4(problem, arm, mass=None):
     robot = problem.robot
     max_limits = []

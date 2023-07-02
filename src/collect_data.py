@@ -1,13 +1,13 @@
 from random import uniform
 
-
+import argparse
 from utils import *
 from panda_primitives import *
 import ikfast
 
-def packed_force_aware_transfer_HIRO(arm='right', grasp_type='top', num=1, dist=0.5, high_angle=math.pi/4, low_angle = -math.pi/4, mass=MASS, initial_conf=TOP_HOLDING_LEFT_ARM):
+
+def packed_force_aware_transfer_HIRO(show_sols=True, arm='right', num=1, dist=0.5, high_angle=math.pi/4, low_angle = -math.pi/4, mass=MASS, initial_conf=TOP_HOLDING_LEFT_ARM):
     # TODO: packing problem where you have to place in one direction
-    connect(use_gui=True)
     print('in packed')
     base_extent = 5.0
     X_DIST = dist
@@ -71,20 +71,37 @@ def packed_force_aware_transfer_HIRO(arm='right', grasp_type='top', num=1, dist=
     traj = planner(initial_conf, get_pose(blocks[-1]))
     saver.restore()
     set_real_time(True)
-    input("Hit enter to execute plan")
     prevT = 0
+    if traj is None:
+        return None
     path = list(traj.path)
     path_rev = deepcopy(path)
     path_rev.reverse()
     full_path = path + path_rev
-    index = 0
     print(path[-1].values)
-    for conf in full_path:
-        set_joint_positions_torque(panda, get_arm_joints(panda), conf.values, conf.velocities)
-        wait_for_duration(.001)
-        prevT = conf.dt
-    input("Press enter to quit.")
+    if show_sols:
+        for conf in full_path:
+            set_joint_positions_torque(panda, get_arm_joints(panda), conf.values, conf.velocities)
+            wait_for_duration(.001)
+    return path
+
+def save_traj_data(traj):
+    if traj is None:
+        return
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    ts = str(datetime.now()).replace(" ", "_")
+    parser.add_argument('-sets', default=10, type=int, help='The number of itterations to run experiment')
+    parser.add_argument('-random-start', action='store_true', help='Randomizes start position')
+    parser.add_argument('-show-solutions', action='store_true', help='Randomizes start position')
+    parser.add_argument('-data-path', default="data/", type=str, help='The number of itterations to run experiment')
+    parser.add_argument('-file-name', default=f"data_collection_{ts}.csv")
+    connect(use_gui=True)
+    args = parser.parse_args()
+    for i in range(args.sets):
+        traj = packed_force_aware_transfer_HIRO()
+    save_traj_data(traj)
+    
     disconnect()
-
-
-packed_force_aware_transfer_HIRO()
