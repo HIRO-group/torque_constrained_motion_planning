@@ -26,7 +26,7 @@ def packed_force_aware_transfer_HIRO(arm='right', grasp_type='top', num=1, dist=
     initial_conf = TOP_HOLDING_LEFT_ARM
     add_data_path()
     floor = load_pybullet("plane.urdf")
-    set_point(floor, (0,0,-.954))
+    set_point(floor, (0,0,-1))
     panda = create_panda()
     # set_point(panda,point=Point(0,0, 0.1))
     set_joint_force_limits(panda)
@@ -34,15 +34,17 @@ def packed_force_aware_transfer_HIRO(arm='right', grasp_type='top', num=1, dist=
     open_arm(panda, arm)
     # set_point(panda, (0,0,0.4))
     table = load_pybullet(HIRO_TABLE_1, rel_path=True)
-    set_point(table, (-0.2994,0,-0.5131))
+    set_point(table, (-0.39905, -0.04297, -0.48))
     table2 = load_pybullet(HIRO_TABLE_2, rel_path=True)
-    set_point(table2, (0.6218, 0,-0.5131))
+    set_point(table2, (0.4614, -0.0502, -0.48))
     set_mass(table2, 1000000)
     set_mass(table, 1000000)
 
     wall = load_pybullet(WALL_URDF, rel_path=True)
-    set_pose(wall, ((-0.7366, 0,0),quat_from_euler((0,0,0))))
+    set_pose(wall, ((-0.7366, 0, 0),quat_from_euler((0,0,0))))
     add_fixed_constraint(wall, floor)
+    add_fixed_constraint(table, table2)
+
 
     start_plate = create_box(.5, .9, .01, color=GREEN)
     plate_z = stable_z(start_plate, table2)

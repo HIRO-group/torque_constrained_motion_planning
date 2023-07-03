@@ -1,13 +1,15 @@
 from random import uniform
-
+import time as Time
 import argparse
 from utils import *
 from panda_primitives import *
 import ikfast
 
 
+
 def packed_force_aware_transfer_HIRO(show_sols=True, arm='right', num=1, dist=0.5, high_angle=math.pi/4, low_angle = -math.pi/4, mass=MASS, initial_conf=TOP_HOLDING_LEFT_ARM):
     # TODO: packing problem where you have to place in one direction
+    connect(use_gui=show_sols)
     print('in packed')
     base_extent = 5.0
     X_DIST = dist
@@ -26,7 +28,7 @@ def packed_force_aware_transfer_HIRO(show_sols=True, arm='right', num=1, dist=0.
     initial_conf = TOP_HOLDING_LEFT_ARM
     add_data_path()
     floor = load_pybullet("plane.urdf")
-    set_point(floor, (0,0,-.954))
+    set_point(floor, (0,0,-1))
     panda = create_panda()
     # set_point(panda,point=Point(0,0, 0.1))
     set_joint_force_limits(panda)
@@ -34,14 +36,14 @@ def packed_force_aware_transfer_HIRO(show_sols=True, arm='right', num=1, dist=0.
     open_arm(panda, arm)
     # set_point(panda, (0,0,0.4))
     table = load_pybullet(HIRO_TABLE_1, rel_path=True)
-    set_point(table, (-0.2994,0,-0.5131))
+    set_point(table, (-0.39905, -0.04297, -0.48))
     table2 = load_pybullet(HIRO_TABLE_2, rel_path=True)
-    set_point(table2, (0.6218, 0,-0.5131))
+    set_point(table2, (0.4614, -0.0502, -0.48))
     set_mass(table2, 1000000)
     set_mass(table, 1000000)
 
     wall = load_pybullet(WALL_URDF, rel_path=True)
-    set_pose(wall, ((-0.7366, 0,0),quat_from_euler((0,0,0))))
+    set_pose(wall, ((-0.7366, 0, 0),quat_from_euler((0,0,0))))
     add_fixed_constraint(wall, floor)
 
     start_plate = create_box(.5, .9, .01, color=GREEN)
@@ -65,15 +67,18 @@ def packed_force_aware_transfer_HIRO(show_sols=True, arm='right', num=1, dist=0.
     obj_z = stable_z(blocks[0], start_plate)
     set_point(blocks[0], (new_x, new_y, obj_z))
     enable_gravity()
-    problem = Problem(panda, [table, table2, wall, plate], blocks[-1])
+    problem = Problem(panda, [table, table2, wall, plate], blocks[-1], mass)
     planner = get_planner_fn_force_aware(problem)
     saver = WorldSaver()
+    start = Time.time()
     traj = planner(initial_conf, get_pose(blocks[-1]))
+    planning_time = Time.time() - start
     saver.restore()
     set_real_time(True)
     prevT = 0
     if traj is None:
-        return None
+        disconnect()
+        return None, None
     path = list(traj.path)
     path_rev = deepcopy(path)
     path_rev.reverse()
@@ -83,25 +88,60 @@ def packed_force_aware_transfer_HIRO(show_sols=True, arm='right', num=1, dist=0.
         for conf in full_path:
             set_joint_positions_torque(panda, get_arm_joints(panda), conf.values, conf.velocities)
             wait_for_duration(.001)
-    return path
+    disconnect()
+    return path, planning_time
 
-def save_traj_data(traj):
+
+
+def save_traj_data(traj, args, filename):
     if traj is None:
         return
-
+    velocities = []
+    confs = []
+    torques = []
+    ts = []
+    accelerations = []
+    for conf in traj:
+        velocities.append(conf.velocities)
+        confs.append(conf.values)
+        accelerations.append(conf.accelerations)
+        ts.append(conf.dt)
+        torques.append(conf.torques)
+    
+    np.savez(
+        args.data_path + "/" + filename,
+        q = confs,
+        qd = velocities,
+        qdd = accelerations,
+        torques = torques,
+        ts = ts
+    )
 
 def main():
     parser = argparse.ArgumentParser()
-    ts = str(datetime.now()).replace(" ", "_")
+    ts = str(datetime.datetime.now()).replace(" ", "_")
     parser.add_argument('-sets', default=10, type=int, help='The number of itterations to run experiment')
     parser.add_argument('-random-start', action='store_true', help='Randomizes start position')
-    parser.add_argument('-show-solutions', action='store_true', help='Randomizes start position')
+    parser.add_argument('-mass', default=MASS, type=int, help='mass of the payload for this set of experiments')
+    parser.add_argument('-dist', default=0.5, type=float, help='distance of the payload from the base of the robot for this set of experiments (0, .8)')
+
+    parser.add_argument('-show-solutions', default=False, action='store_true', help='Randomizes start position')
     parser.add_argument('-data-path', default="data/", type=str, help='The number of itterations to run experiment')
-    parser.add_argument('-file-name', default=f"data_collection_{ts}.csv")
-    connect(use_gui=True)
+    parser.add_argument('-file-name', default=f"data_collection_{ts}")
     args = parser.parse_args()
-    for i in range(args.sets):
-        traj = packed_force_aware_transfer_HIRO()
-    save_traj_data(traj)
     
-    disconnect()
+    meta_file = args.data_path + "/" + args.file_name + "_meta.csv"
+    import csv
+    with open(meta_file, 'w', newline='') as csvfile:
+        metaWriter = csv.writer(csvfile, delimiter=',')
+        metaWriter.writerow(["planning_times"])
+        
+        for i in range(args.sets):
+            filename = args.file_name + f"{i}.npz"
+            traj, planning_time = packed_force_aware_transfer_HIRO(show_sols=args.show_solutions, mass=args.mass, dist=args.dist)
+            save_traj_data(traj, args, filename)
+            metaWriter.writerow([planning_time])
+
+    
+if __name__ == '__main__':
+    main()

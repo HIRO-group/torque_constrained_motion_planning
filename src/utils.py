@@ -37,8 +37,8 @@ ARM_LINK_NAMES = ['panda_link1', 'panda_link2', 'panda_link3','panda_link4',
 PI = np.pi
 PANDA_GRIPPER_ROOT = 'panda_hand'
 PANDA_TOOL_FRAME = 'panda_grasptarget'
-HIRO_TABLE_1 = "src/models/table_panda_HIRO_1.urdf"
-HIRO_TABLE_2 = "src/models/table_panda_HIRO_2.urdf"
+HIRO_TABLE_1 = "src/models/table_wooden.urdf"
+HIRO_TABLE_2 = "src/models/table_ikea.urdf"
 COKE_URDF = "src/models/coke.urdf"
 WALL_URDF = "src/models/wall.urdf"
 PANDA_MOD_URDF = "src/models/panda_mod.urdf"
@@ -84,10 +84,11 @@ CHROMATIC_COLORS = {
 MAX_GRASP_WIDTH = 0.07
 
 class Problem:
-    def __init__(self, robot, fixed, payload):
+    def __init__(self, robot, fixed, payload, payload_mass):
         self.robot = robot
         self.fixed = fixed
         self.payload = payload
+        self.payload_mass = payload_mass
 
 def Point(x=0., y=0., z=0.):
     return np.array([x, y, z])
@@ -3334,12 +3335,12 @@ def check_initial_end_force_aware(start_conf, end_conf, collision_fn, torque_fn,
         return False
     return True
 
-def create_trajectory(robot, joints, path, bodies, velocities=None, accelerations = None, movables=None, dts = None, ts=None):
+def create_trajectory(robot, joints, path, bodies, velocities=None, accelerations = None, movables=None, dts = None, ts=None, dynam_fn=None):
     confs = []
     index = 0
     if velocities is not None:
         for i in range(len(velocities)):
-            confs.append(Conf(robot, joints, path[i], velocities=velocities[i], movables=bodies, accelerations=accelerations[i], dt=dts[i]))
+            confs.append(Conf(robot, joints, path[i], velocities=velocities[i], movables=bodies, accelerations=accelerations[i], dt=dts[i], dynam_fn=dynam_fn))
             index+=1
     for i in range(index, len(path)):
             confs.append(Conf(robot, joints, path[i], velocities=None))
@@ -3362,14 +3363,17 @@ class Grasp(object):
         return Attachment(robot, tool_link, self.value, self.body)
 
 class Conf(object):
-    def __init__(self, body, joints, values=None, init=False, velocities=None, accelerations=None, movables=None, dt=None):
+    def __init__(self, body, joints, values=None, init=False, velocities=None, accelerations=None, movables=None, dt=None, dynam_fn=None):
         self.body = body
         self.joints = joints
         if values is None:
             values = get_joint_positions(self.body, self.joints)
         self.values = tuple(values)
         self.init = init
-        self.torque_joints = {}
+        torques = None
+        if dynam_fn is not None:
+            torques = dynam_fn(values, velocities, accelerations)
+        self.torques = torques
         self.velocities = velocities[:len(joints)] if velocities is not None else velocities
         self.accelerations = accelerations[:len(joints)] if accelerations is not None else accelerations
         self.dt = dt
@@ -3628,29 +3632,19 @@ def plan_cartesian_motion(robot, first_joint, target_link, waypoint_poses,
         start_time = time.time()
         for iteration in irange(max_iterations):
             if elapsed_time(start_time) >= max_time:
-                print("times up")
                 remove_body(sub_robot)
                 return None
             sub_kinematic_conf = inverse_kinematics_helper(sub_robot, sub_target_link, target_pose, null_space=null_space)
             set_joint_positions(sub_robot, sub_joints, sub_kinematic_conf)
             if is_pose_close(get_link_pose(sub_robot, sub_target_link), target_pose, **kwargs):
-                print("###################")
                 set_joint_positions(robot, selected_joints, sub_kinematic_conf)
                 kinematic_conf = get_configuration(robot)
                 if not all_between(lower_limits, kinematic_conf, upper_limits):
-                    print("limits violated")
-                #     movable_joints = get_movable_joints(robot)
-                #     print([(get_joint_name(robot, j), l, v, u) for j, l, v, u in
-                #           zip(movable_joints, lower_limits, kinematic_conf, upper_limits) if not (l <= v <= u)])
-                #     print("Limits violated")
-                #     # wait_if_gui()
                     remove_body(sub_robot)
                     return None
-                print("IK iterations:", iteration)
                 solutions.append(kinematic_conf)
                 break
         else:
-            print("else area")
             remove_body(sub_robot)
             return None
     # TODO: finally:

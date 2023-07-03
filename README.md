@@ -13,6 +13,7 @@ The Problem utility class (in util.py) is used to provide environment informatio
 - `Robot` - the body ID of the robot in your pybullet sim
 - `Fixed` - a list of objects/ obstacle body IDs in your sim the robot must avoid (not including the payload)
 - `Payload` - body ID of object representing robot payload
+- `payload mass`- mass of the payload 
 
 ### Using the Planner
 Once you set up your problem to use the planner you need to set up the planner function using the `get_planner_fn_force_aware`
