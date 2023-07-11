@@ -14,17 +14,13 @@ The Problem utility class (in util.py) is used to provide environment informatio
 - `Fixed` - a list of objects/ obstacle body IDs in your sim the robot must avoid (not including the payload)
 - `Payload` - body ID of object representing robot payload
 - `payload mass`- mass of the payload 
+- `execution_time` the maximum time that the trajectory should take to execute
 
 ### Using the Planner
-Once you set up your problem to use the planner you need to set up the planner function using the `get_planner_fn_force_aware`
-method which takes the planning problem setup as input.
-```
-planner = get_planner_fn_force_aware(problem)
-```
-To generate a trajectory the planner takes the following as input:
-
+Once you set up your problem planner_fn_force_aware To generate a trajectory the planner takes the following as input:
 - `start_conf` - The initial joint configuration of the robot
 - `pose` - the goal location for the payload
+- `problem` - the defined problem
 If a solution trajectory is found the returned object has the following form:
 - path (array of:)
     - value - the joint configuration at the given time step

@@ -84,11 +84,12 @@ CHROMATIC_COLORS = {
 MAX_GRASP_WIDTH = 0.07
 
 class Problem:
-    def __init__(self, robot, fixed, payload, payload_mass):
+    def __init__(self, robot, fixed, payload, payload_mass, execution_time):
         self.robot = robot
         self.fixed = fixed
         self.payload = payload
         self.payload_mass = payload_mass
+        self.execution_time = execution_time
 
 def Point(x=0., y=0., z=0.):
     return np.array([x, y, z])
