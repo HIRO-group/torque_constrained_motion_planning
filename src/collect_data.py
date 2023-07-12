@@ -67,7 +67,7 @@ def packed_force_aware_transfer_HIRO(show_sols=True, arm='right', num=1, dist=0.
     obj_z = stable_z(blocks[0], start_plate)
     set_point(blocks[0], (new_x, new_y, obj_z))
     enable_gravity()
-    problem = Problem(panda, [table, table2, wall, plate], blocks[-1], mass, 5)
+    problem = Problem(panda, [table, table2, wall, plate], blocks[-1], mass, 5, torque_test="rne")
     planner = planner_fn_force_aware
     saver = WorldSaver()
     start = Time.time()

@@ -3,6 +3,7 @@ from min_jerk_v2 import *
 from utils import *
 from franka_ik_fast import *
 from rrt_star import *
+import panda_dynamics_model as pdm
 
 METHOD = "arne"
 MASS = 5
@@ -29,9 +30,11 @@ def get_torque_limits_not_exceded_test_v3_nov(problem, arm, mass=None):
     comR = []
     totalMass = 0
     def test(poses = None, ptotalMass = None, velocities=None, accelerations=None):
-        totalMass = ptotalMass
-        if totalMass is None:
+        totalMass = problem.payload_mass
+        if totalMass is None and problem.payload is not None:
             totalMass = get_mass(problem.payload)
+        elif problem.payload is None:
+            totalMass = 0
         velocities = [0]*len(poses)
         accelerations = [0]*len(poses)
         hold = get_joint_positions(robot, joints)
@@ -52,9 +55,65 @@ def get_torque_limits_not_exceded_test_v3_nov(problem, arm, mass=None):
         # print("torque test: PASSED")
         remove_payload()
         return True
-
     return test
 
+def get_torque_limits_not_exceded_test_v2(problem, mass=None):
+    robot = problem.robot
+    max_limits = []
+    baseLink = 1
+    joints = get_arm_joints(robot)
+    for joint in joints:
+            max_limits.append(get_max_force(problem.robot, joint))
+    ee_link = get_gripper_link(robot)
+    EPS =  1
+    def test(poses = None, ptotalMass = None, velocities=None, accelerations=None):
+        # return True
+        totalMass = problem.payload_mass
+        print("in torque test")
+        if totalMass is None and problem.payload is not None:
+            totalMass = get_mass(problem.payload)
+        elif problem.payload is None:
+            totalMass = 0
+        if velocities is None or accelerations is None:
+            velocities = [0]*len(poses)
+            accelerations = [0]*len(poses)
+    
+        hold = get_joint_positions(robot, joints)
+        set_joint_positions(robot, joints, poses)
+        accelerations += [0.0] * 2
+        velocities += [0.0] * 2
+        Jl, Ja = compute_jacobian(problem.robot, ee_link, velocities=velocities, accelerations=accelerations)
+        M = pdm.get_mass_matrix(poses)
+        p = np.ndarray(())
+        C = pdm.get_coriolis_matrix(np.asarray([poses[:7]], dtype=np.float64).transpose(), np.asarray([velocities[:7]], dtype=np.float64).transpose())
+        torquesInert = np.matmul(M, accelerations[:7])
+        torquesC = np.matmul(C, velocities[:7])
+        torquesG = pdm.get_gravity_vector(poses)
+
+        set_joint_positions(robot, joints, hold)
+        Jl = np.array(Jl).transpose()
+        Ja = np.array(Ja).transpose()
+
+        J = np.concatenate((Jl, Ja))
+
+        print(J.shape)
+        Jt = np.transpose(J)
+        print(J.shape)
+        force = totalMass * 9.81
+        toolV = np.matmul(J, velocities)
+
+        forceReal = np.array([0, 0, force,
+                                0, 0, 0])
+        force3d = forceReal
+        # print(force3d)
+        # print(len(J), len(J[0]))
+        torquesExt = np.matmul(Jt, force3d)
+        torques = torquesExt[:7] + torquesInert + torquesC + torquesG
+        for i in range(len(max_limits)-1):
+            if (abs(torques[i]) >= max_limits[i]*EPS):
+                return False
+        return True
+    return test
 
 def get_torque_limits_not_exceded_test_v3_nov(problem, mass=None):
     robot = problem.robot
@@ -69,9 +128,11 @@ def get_torque_limits_not_exceded_test_v3_nov(problem, mass=None):
         totalMass = get_mass(problem.payload)
     totalMass = 0
     def test(poses = None, ptotalMass = None, velocities=None, accelerations=None):
-        totalMass = ptotalMass
-        if totalMass is None:
+        totalMass = problem.payload_mass
+        if totalMass is None and problem.payload is not None:
             totalMass = get_mass(problem.payload)
+        elif problem.payload is None:
+            totalMass = 0
         velocities = [0]*len(poses)
         accelerations = [0]*len(poses)
         hold = get_joint_positions(robot, joints)
@@ -164,7 +225,8 @@ def planner_fn_force_aware(start_conf, pose, problem):
     timestamp = "{}_{}".format(timestamp.split(' ')[0], timestamp.split(' ')[1])
     robot = problem.robot
     obstacles = problem.fixed
-    if METHOD == "arne":
+    METHOD = problem.torque_test
+    if METHOD == "rne":
         torque_test_right = get_torque_limits_not_exceded_test_v4(problem)
     elif METHOD == "dyn":
         torque_test_right = get_torque_limits_not_exceded_test_v2(problem)
@@ -179,7 +241,7 @@ def planner_fn_force_aware(start_conf, pose, problem):
     # pose = world_pose_to_robot_frame(robot, pose)
     torque_test = torque_test_right
     gripper_pose = multiply(list(pose), invert(grasp.value)) # w_f_g = w_f_o * (g_f_o)^-1
-    arm_link = get_gripper_link(robot, arm)
+    arm_link = get_gripper_link(robot)
     # arm_link = link_from_name(robot, 'r_panda_link8')
     arm_joints = get_arm_joints(robot)
     max_velocities = get_max_velocities(problem.robot, arm_joints)
