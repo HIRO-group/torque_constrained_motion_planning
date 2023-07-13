@@ -62,7 +62,7 @@ def sample_tool_ik(robot, arm, tool_pose, nearby_conf=USE_CURRENT, max_attempts=
     return None
 
 def bi_panda_inverse_kinematics(robot, arm, gripper_link, gripper_pose, max_attempts=25, max_time=1.3, custom_limits={}, obstacles=[]):
-    arm_link = get_gripper_link(robot, arm)
+    arm_link = get_gripper_link(robot)
     arm_joints = get_arm_joints(robot)
     if is_ik_compiled(PANDA_INFO):
         ik_joints = get_arm_joints(robot)

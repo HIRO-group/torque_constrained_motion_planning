@@ -84,11 +84,13 @@ CHROMATIC_COLORS = {
 MAX_GRASP_WIDTH = 0.07
 
 class Problem:
-    def __init__(self, robot, fixed, payload, payload_mass):
+    def __init__(self, robot, fixed, payload, payload_mass, execution_time, torque_test = "arne"):
         self.robot = robot
         self.fixed = fixed
         self.payload = payload
         self.payload_mass = payload_mass
+        self.execution_time = execution_time
+        self.torque_test = torque_test
 
 def Point(x=0., y=0., z=0.):
     return np.array([x, y, z])
@@ -3516,7 +3518,7 @@ def sample_placement_on_aabb(top_body, bottom_aabb, top_pose=unit_pose(),
         return pose
     return None
 
-def get_gripper_link(robot, arm):
+def get_gripper_link(robot):
     return link_from_name(robot, PANDA_TOOL_FRAME)
 
 def is_pose_close(pose, target_pose, pos_tolerance=1e-3, ori_tolerance=1e-3*np.pi):
@@ -3822,3 +3824,22 @@ def world_pose_to_robot_frame(robot, pose, baselink = BASE_LINK):
         trans[1] - robot_frame[0][1],
         trans[2] - robot_frame[0][2])
     return (new_pose, new_quat)
+
+def compute_jacobian(robot, link, positions=None, joints=None, velocities=None, accelerations=None):
+    if not joints:
+        joints = get_movable_joints(robot)
+    if positions is None:
+        positions = get_joint_positions(robot, joints)
+    assert len(joints) == len(positions)
+    if velocities is None:
+        velocities = [0.0] * len(positions)
+    else:
+        velocities += [0]*(len(joints)-len(velocities))
+    if accelerations == None:
+        accelerations = [0.0] * len(positions)
+    else:
+        accelerations += [0]*(len(joints)-len(accelerations))
+    translate, rotate = p.calculateJacobian(robot, link, unit_point(), positions,
+                                            velocities, accelerations, physicsClientId=CLIENT)
+    #movable_from_joints(robot, joints)
+    return list(zip(*translate)), list(zip(*rotate)) # len(joints) x 3

@@ -14,17 +14,18 @@ The Problem utility class (in util.py) is used to provide environment informatio
 - `Fixed` - a list of objects/ obstacle body IDs in your sim the robot must avoid (not including the payload)
 - `Payload` - body ID of object representing robot payload
 - `payload mass`- mass of the payload 
+- `execution_time` - the maximum time that the trajectory should take to execute
+- `torque_test` - the method you wish to use for the torque evaluation of the joints the options are as follows:
+    - `base` - no torque evaluation
+    - `dyn` - the rigid body dynamics equation for inverse dynamics with the payload estimated as a point mass at the gripper
+    - `nov` - recursive newton euler where the velocity and accelerations are assumed to 0
+    - `rne` - full recursive newton euler where the velocities and accelerations from min jerk optimization are considered
 
 ### Using the Planner
-Once you set up your problem to use the planner you need to set up the planner function using the `get_planner_fn_force_aware`
-method which takes the planning problem setup as input.
-```
-planner = get_planner_fn_force_aware(problem)
-```
-To generate a trajectory the planner takes the following as input:
-
+Once you set up your problem planner_fn_force_aware To generate a trajectory the planner takes the following as input:
 - `start_conf` - The initial joint configuration of the robot
 - `pose` - the goal location for the payload
+- `problem` - the defined problem
 If a solution trajectory is found the returned object has the following form:
 - path (array of:)
     - value - the joint configuration at the given time step
