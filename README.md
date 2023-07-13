@@ -26,6 +26,7 @@ Once you set up your problem planner_fn_force_aware To generate a trajectory the
 - `start_conf` - The initial joint configuration of the robot
 - `pose` - the goal location for the payload
 - `problem` - the defined problem
+
 If a solution trajectory is found the returned object has the following form:
 - path (array of:)
     - value - the joint configuration at the given time step
