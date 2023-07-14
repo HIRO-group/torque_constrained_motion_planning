@@ -10,7 +10,7 @@ MASS = 5
 def arm_conf(_,__):
     return [0, -PI/4, 0.0, -6*PI/8, 0, PI/2, PI/4]
 
-def get_torque_limits_not_exceded_test_base(problem, arm, mass=None):
+def get_torque_limits_not_exceded_test_base(problem, mass=None):
     def test(poses = None, ptotalMass = None, velocities=None, accelerations=None):
         return True
     return test

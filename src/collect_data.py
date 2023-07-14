@@ -7,7 +7,7 @@ import ikfast
 import os
 import csv
 
-def packed_force_aware_transfer_HIRO(show_sols=True, arm='right', num=1, dist=0.5, high_angle=math.pi/4, low_angle = -math.pi/4, mass=MASS, initial_conf=TOP_HOLDING_LEFT_ARM):
+def packed_force_aware_transfer_HIRO(show_sols=True, arm='right', num=1, dist=0.5, high_angle=math.pi/4, low_angle = -math.pi/4, mass=MASS, initial_conf=TOP_HOLDING_LEFT_ARM, args = None):
     # TODO: packing problem where you have to place in one direction
     connect(use_gui=show_sols)
     print('in packed')
@@ -67,35 +67,42 @@ def packed_force_aware_transfer_HIRO(show_sols=True, arm='right', num=1, dist=0.
     obj_z = stable_z(blocks[0], start_plate)
     set_point(blocks[0], (new_x, new_y, obj_z))
     enable_gravity()
-    problem = Problem(panda, [table, table2, wall, plate], blocks[-1], mass, 5, torque_test="rne")
-    planner = planner_fn_force_aware
     saver = WorldSaver()
-    start = Time.time()
-    
-    grasp_pose = get_pose(blocks[-1])
-    approach_pose = ((grasp_pose[0][0],grasp_pose[0][1], grasp_pose[0][2] + .05), grasp_pose[1])
-    place_pose = ((0, -0.45, plate_z + .05), grasp_pose[1])
-    approach_path = planner(initial_conf, approach_pose, problem)
-    problem.execution_time = 1
-    grasp_path = planner(approach_path.path[-1].values, grasp_pose,  problem)
-    problem.execution_time = 5
-    place_path = planner(grasp_path.path[-1].values, place_pose,  problem)
-    planning_time = Time.time() - start
-    saver.restore()
-    set_real_time(True)
-    prevT = 0
-    if approach_path is None or grasp_path is None or place_path is None:
-        disconnect()
-        return None, None
-    path = list(approach_path.path) + list(grasp_path.path) + list(place_path.path)
-    full_path = path
-    print(path[-1].values)
-    if show_sols:
-        for conf in full_path:
-            set_joint_positions_torque(panda, get_arm_joints(panda), conf.values, conf.velocities)
-            wait_for_duration(.001)
+    planning_times = {}
+    paths = {}
+    for test in ["rne", "nov", "dyn", "base"]:
+        problem = Problem(panda, [table, table2, wall, plate], blocks[-1], mass, 5, torque_test=test)
+        planner = planner_fn_force_aware
+        start = Time.time()
+        
+        grasp_pose = get_pose(blocks[-1])
+        approach_pose = ((grasp_pose[0][0],grasp_pose[0][1], grasp_pose[0][2] + .05), grasp_pose[1])
+        place_pose = ((0, -0.45, plate_z + .05), grasp_pose[1])
+        approach_path = planner(initial_conf, approach_pose, problem)
+        problem.execution_time = 1
+        grasp_path = planner(approach_path.path[-1].values, grasp_pose,  problem)
+        problem.execution_time = 5
+        place_path = planner(grasp_path.path[-1].values, place_pose,  problem)
+        planning_time = Time.time() - start
+        planning_times[test] = planning_time
+        saver.restore()
+        set_real_time(True)
+        prevT = 0
+        if approach_path is None or grasp_path is None or place_path is None:
+            paths[test] = None
+            continue
+        path = list(approach_path.path) + list(grasp_path.path) + list(place_path.path)
+        full_path = path
+        paths[test] = path
+        print(path[-1].values)
+        if show_sols:
+            for conf in full_path:
+                set_joint_positions_torque(panda, get_arm_joints(panda), conf.values, conf.velocities)
+                wait_for_duration(.001)
+        set_real_time(False)
+        saver.restore()
     disconnect()
-    return path, planning_time
+    return paths, planning_times
 
 
 
@@ -137,22 +144,22 @@ def main():
     args = parser.parse_args()
     if not os.path.exists(args.data_path):
         os.makedirs(args.data_path)
-
-    meta_file = os.path.join(args.data_path, args.file_name)
+    meta_file = args.file_name + "_meta.csv"
+    meta_file = os.path.join(args.data_path, meta_file)
     with open(meta_file, 'w', newline='') as csvfile:
         metaWriter = csv.writer(csvfile, delimiter=',')
-        metaWriter.writerow(["planning_times, mass, distance, filename"])
-
-    meta_file = args.data_path + "/" + args.file_name + "_meta.csv"
+        metaWriter.writerow(["planning_time", "mass", "distance", "success", "filename"])
     
-    with open(meta_file, 'w', newline='') as csvfile:
+    with open(meta_file, 'a', newline='') as csvfile:
         metaWriter = csv.writer(csvfile, delimiter=',')
         
         for i in range(args.sets):
-            filename = args.file_name + f"{i}.npz"
-            traj, planning_time = packed_force_aware_transfer_HIRO(show_sols=args.show_solutions, mass=args.mass, dist=args.dist)
-            save_traj_data(traj, args, filename)
-            metaWriter.writerow([planning_time, args.mass, args.dist, filename])
+            filename = args.file_name + f"_{i}.npz"
+            trajs, planning_times = packed_force_aware_transfer_HIRO(show_sols=args.show_solutions, mass=args.mass, dist=args.dist)
+            for method in trajs:
+                method_file = method + "_" + filename
+                save_traj_data(trajs[method], args, method_file)
+                metaWriter.writerow([planning_times[method], args.mass, args.dist, trajs[method] is not None, method_file])
 
     
 if __name__ == '__main__':
